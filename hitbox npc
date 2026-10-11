@@ -1,0 +1,486 @@
+--// Optimized NPC Hitbox + ESP with Scan & Individual Toggle
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local lp = Players.LocalPlayer
+local pg = lp:WaitForChild("PlayerGui")
+
+local HITBOX_ON = false
+local ESP_ON = false
+local partName = "Head"
+local hitboxSize = 7
+local currentColor = Color3.fromRGB(255, 50, 50)
+local fillTrans = 0.5
+
+-- NPC control
+local NPCCache = {}          -- [model] = true
+local EnabledNPCs = {}       -- [model] = true/false (user choice)
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "NPC_Tools"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = pg
+
+-- 👁️ Button
+local eye = Instance.new("TextButton")
+eye.Size = UDim2.new(0, 50, 0, 50)
+eye.Position = UDim2.new(0, 15, 0.4, 0)
+eye.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+eye.Text = "👁️"
+eye.TextSize = 22
+eye.Font = Enum.Font.GothamBold
+eye.TextColor3 = Color3.new(1,1,1)
+eye.BorderSizePixel = 0
+eye.Parent = gui
+Instance.new("UICorner", eye).CornerRadius = UDim.new(1, 0)
+
+-- Left Panel (Hitbox)
+local left = Instance.new("Frame")
+left.Size = UDim2.new(0, 180, 0, 200)
+left.Position = UDim2.new(0, 12, 0.32, 0)
+left.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+left.BorderSizePixel = 0
+left.Visible = false
+left.Parent = gui
+Instance.new("UICorner", left).CornerRadius = UDim.new(0, 10)
+
+local leftTitle = Instance.new("TextButton")
+leftTitle.Size = UDim2.new(1, 0, 0, 28)
+leftTitle.BackgroundColor3 = Color3.fromRGB(28, 28, 33)
+leftTitle.Text = "HITBOX (drag)"
+leftTitle.Font = Enum.Font.GothamBold
+leftTitle.TextSize = 13
+leftTitle.TextColor3 = Color3.new(1,1,1)
+leftTitle.BorderSizePixel = 0
+leftTitle.Parent = left
+Instance.new("UICorner", leftTitle).CornerRadius = UDim.new(0, 10)
+
+local hitStatus = Instance.new("TextButton")
+hitStatus.Size = UDim2.new(0, 155, 0, 28)
+hitStatus.Position = UDim2.new(0, 12, 0, 38)
+hitStatus.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+hitStatus.Text = "HITBOX: OFF"
+hitStatus.Font = Enum.Font.GothamBold
+hitStatus.TextSize = 13
+hitStatus.TextColor3 = Color3.new(1,1,1)
+hitStatus.BorderSizePixel = 0
+hitStatus.Parent = left
+Instance.new("UICorner", hitStatus).CornerRadius = UDim.new(0, 7)
+
+local partBtn = Instance.new("TextButton")
+partBtn.Size = UDim2.new(0, 155, 0, 28)
+partBtn.Position = UDim2.new(0, 12, 0, 72)
+partBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+partBtn.Text = "Part: Head"
+partBtn.Font = Enum.Font.Gotham
+partBtn.TextSize = 13
+partBtn.TextColor3 = Color3.new(1,1,1)
+partBtn.BorderSizePixel = 0
+partBtn.Parent = left
+Instance.new("UICorner", partBtn).CornerRadius = UDim.new(0, 7)
+
+local sizeBox = Instance.new("TextBox")
+sizeBox.Size = UDim2.new(0, 155, 0, 28)
+sizeBox.Position = UDim2.new(0, 12, 0, 106)
+sizeBox.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+sizeBox.PlaceholderText = "Size (7)"
+sizeBox.Text = ""
+sizeBox.Font = Enum.Font.Gotham
+sizeBox.TextSize = 13
+sizeBox.TextColor3 = Color3.new(1,1,1)
+sizeBox.BorderSizePixel = 0
+sizeBox.Parent = left
+Instance.new("UICorner", sizeBox).CornerRadius = UDim.new(0, 7)
+
+local scanBtn = Instance.new("TextButton")
+scanBtn.Size = UDim2.new(0, 155, 0, 28)
+scanBtn.Position = UDim2.new(0, 12, 0, 140)
+scanBtn.BackgroundColor3 = Color3.fromRGB(0, 90, 160)
+scanBtn.Text = "SCAN NPCs"
+scanBtn.Font = Enum.Font.GothamBold
+scanBtn.TextSize = 13
+scanBtn.TextColor3 = Color3.new(1,1,1)
+scanBtn.BorderSizePixel = 0
+scanBtn.Parent = left
+Instance.new("UICorner", scanBtn).CornerRadius = UDim.new(0, 7)
+
+-- Right Panel (ESP)
+local right = Instance.new("Frame")
+right.Size = UDim2.new(0, 200, 0, 210)
+right.Position = UDim2.new(1, -215, 0.28, 0)
+right.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+right.BorderSizePixel = 0
+right.Visible = false
+right.Parent = gui
+Instance.new("UICorner", right).CornerRadius = UDim.new(0, 10)
+
+local rightTitle = Instance.new("TextButton")
+rightTitle.Size = UDim2.new(1, 0, 0, 28)
+rightTitle.BackgroundColor3 = Color3.fromRGB(28, 28, 33)
+rightTitle.Text = "NPC ESP (drag)"
+rightTitle.Font = Enum.Font.GothamBold
+rightTitle.TextSize = 13
+rightTitle.TextColor3 = Color3.new(1,1,1)
+rightTitle.BorderSizePixel = 0
+rightTitle.Parent = right
+Instance.new("UICorner", rightTitle).CornerRadius = UDim.new(0, 10)
+
+local espStatus = Instance.new("TextButton")
+espStatus.Size = UDim2.new(0, 170, 0, 30)
+espStatus.Position = UDim2.new(0, 15, 0, 40)
+espStatus.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+espStatus.Text = "ESP: OFF"
+espStatus.Font = Enum.Font.GothamBold
+espStatus.TextSize = 13
+espStatus.TextColor3 = Color3.new(1,1,1)
+espStatus.BorderSizePixel = 0
+espStatus.Parent = right
+Instance.new("UICorner", espStatus).CornerRadius = UDim.new(0, 7)
+
+local function colorBtn(name, col, x)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0, 50, 0, 28)
+	b.Position = UDim2.new(0, x, 0, 85)
+	b.BackgroundColor3 = col
+	b.Text = name
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 11
+	b.TextColor3 = Color3.new(1,1,1)
+	b.BorderSizePixel = 0
+	b.Parent = right
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+	return b
+end
+
+local redBtn = colorBtn("Red", Color3.fromRGB(231, 76, 60), 15)
+local blueBtn = colorBtn("Blue", Color3.fromRGB(52, 152, 219), 73)
+local greenBtn = colorBtn("Green", Color3.fromRGB(46, 204, 113), 131)
+
+local solidBtn = Instance.new("TextButton")
+solidBtn.Size = UDim2.new(0, 78, 0, 28)
+solidBtn.Position = UDim2.new(0, 15, 0, 135)
+solidBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+solidBtn.Text = "Solid"
+solidBtn.Font = Enum.Font.GothamBold
+solidBtn.TextSize = 12
+solidBtn.TextColor3 = Color3.new(1,1,1)
+solidBtn.BorderSizePixel = 0
+solidBtn.Parent = right
+Instance.new("UICorner", solidBtn).CornerRadius = UDim.new(0, 6)
+
+local faintBtn = Instance.new("TextButton")
+faintBtn.Size = UDim2.new(0, 78, 0, 28)
+faintBtn.Position = UDim2.new(0, 103, 0, 135)
+faintBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+faintBtn.Text = "Faint"
+faintBtn.Font = Enum.Font.GothamBold
+faintBtn.TextSize = 12
+faintBtn.TextColor3 = Color3.new(1,1,1)
+faintBtn.BorderSizePixel = 0
+faintBtn.Parent = right
+Instance.new("UICorner", faintBtn).CornerRadius = UDim.new(0, 6)
+
+-- ========== NPC LIST PANEL (Scrollable) ==========
+local listPanel = Instance.new("Frame")
+listPanel.Size = UDim2.new(0, 260, 0, 320)
+listPanel.Position = UDim2.new(0.5, -130, 0.5, -160)
+listPanel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+listPanel.BorderSizePixel = 0
+listPanel.Visible = false
+listPanel.Parent = gui
+Instance.new("UICorner", listPanel).CornerRadius = UDim.new(0, 10)
+
+local listTitle = Instance.new("TextButton")
+listTitle.Size = UDim2.new(1, 0, 0, 32)
+listTitle.BackgroundColor3 = Color3.fromRGB(28, 28, 33)
+listTitle.Text = "NPC LIST (drag) - Toggle ON/OFF"
+listTitle.Font = Enum.Font.GothamBold
+listTitle.TextSize = 13
+listTitle.TextColor3 = Color3.new(1,1,1)
+listTitle.BorderSizePixel = 0
+listTitle.Parent = listPanel
+Instance.new("UICorner", listTitle).CornerRadius = UDim.new(0, 10)
+
+local closeList = Instance.new("TextButton")
+closeList.Size = UDim2.new(0, 28, 0, 28)
+closeList.Position = UDim2.new(1, -34, 0, 2)
+closeList.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+closeList.Text = "X"
+closeList.Font = Enum.Font.GothamBold
+closeList.TextSize = 14
+closeList.TextColor3 = Color3.new(1,1,1)
+closeList.BorderSizePixel = 0
+closeList.Parent = listPanel
+Instance.new("UICorner", closeList).CornerRadius = UDim.new(0, 6)
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size = UDim2.new(1, -20, 1, -50)
+scroll.Position = UDim2.new(0, 10, 0, 40)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel = 0
+scroll.ScrollBarThickness = 6
+scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+scroll.Parent = listPanel
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 6)
+listLayout.Parent = scroll
+
+-- Dragging
+local function makeDraggable(handle, panel)
+	local dragging = false
+	local dragStart, startPos
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = panel.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStart
+			panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
+
+makeDraggable(leftTitle, left)
+makeDraggable(rightTitle, right)
+makeDraggable(listTitle, listPanel)
+makeDraggable(eye, eye)
+
+-- Toggle main panels
+local clickStart = Vector2.new()
+eye.MouseButton1Down:Connect(function()
+	clickStart = UIS:GetMouseLocation()
+end)
+eye.MouseButton1Up:Connect(function()
+	if (UIS:GetMouseLocation() - clickStart).Magnitude < 12 then
+		left.Visible = not left.Visible
+		right.Visible = not right.Visible
+	end
+end)
+
+closeList.MouseButton1Click:Connect(function()
+	listPanel.Visible = false
+end)
+
+-- Core functions
+local function isNPC(model)
+	if not model or not model:IsA("Model") then return false end
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return false end
+	return Players:GetPlayerFromCharacter(model) == nil
+end
+
+local function applyHitbox(npc)
+	local head = npc:FindFirstChild("Head")
+	local torso = npc:FindFirstChild("Torso") or npc:FindFirstChild("UpperTorso")
+	if head and head:IsA("BasePart") then
+		head.Size = Vector3.new(1,1,1)
+		head.Material = Enum.Material.Plastic
+		head.Transparency = 0
+	end
+	if torso and torso:IsA("BasePart") then
+		torso.Size = Vector3.new(1,1,1)
+		torso.Material = Enum.Material.Plastic
+		torso.Transparency = 0
+	end
+	local p = npc:FindFirstChild(partName)
+	if p and p:IsA("BasePart") then
+		p.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+		p.Material = Enum.Material.ForceField
+		p.Transparency = 0.45
+		p.Color = Color3.fromRGB(255, 40, 40)
+		p.CanCollide = false
+	end
+end
+
+local function resetHitbox(npc)
+	local head = npc:FindFirstChild("Head")
+	local torso = npc:FindFirstChild("Torso") or npc:FindFirstChild("UpperTorso")
+	if head and head:IsA("BasePart") then
+		head.Size = Vector3.new(1,1,1)
+		head.Material = Enum.Material.Plastic
+		head.Transparency = 0
+	end
+	if torso and torso:IsA("BasePart") then
+		torso.Size = Vector3.new(1,1,1)
+		torso.Material = Enum.Material.Plastic
+		torso.Transparency = 0
+	end
+end
+
+local function applyESP(npc)
+	local h = npc:FindFirstChild("NPCHighlight")
+	if not h then
+		h = Instance.new("Highlight")
+		h.Name = "NPCHighlight"
+		h.Adornee = npc
+		h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		h.OutlineColor = Color3.fromRGB(255, 255, 255)
+		h.Parent = npc
+	end
+	h.FillColor = currentColor
+	h.FillTransparency = fillTrans
+	h.Enabled = true
+end
+
+local function removeESP(npc)
+	local h = npc:FindFirstChild("NPCHighlight")
+	if h then h:Destroy() end
+end
+
+local function shouldAffect(npc)
+	return EnabledNPCs[npc] == true
+end
+
+local function applyToAll()
+	for npc in pairs(NPCCache) do
+		if npc and npc.Parent then
+			if shouldAffect(npc) then
+				if HITBOX_ON then applyHitbox(npc) else resetHitbox(npc) end
+				if ESP_ON then applyESP(npc) else removeESP(npc) end
+			else
+				resetHitbox(npc)
+				removeESP(npc)
+			end
+		else
+			NPCCache[npc] = nil
+			EnabledNPCs[npc] = nil
+		end
+	end
+end
+
+local function addToCache(model)
+	if isNPC(model) and not NPCCache[model] then
+		NPCCache[model] = true
+		EnabledNPCs[model] = true -- default ON
+		if shouldAffect(model) then
+			if HITBOX_ON then applyHitbox(model) end
+			if ESP_ON then applyESP(model) end
+		end
+	end
+end
+
+-- Initial scan
+task.spawn(function()
+	for _, item in pairs(Workspace:GetDescendants()) do
+		if item:IsA("Humanoid") then
+			addToCache(item.Parent)
+		end
+	end
+end)
+
+Workspace.DescendantAdded:Connect(function(obj)
+	if obj:IsA("Humanoid") then
+		task.defer(function()
+			addToCache(obj.Parent)
+		end)
+	end
+end)
+
+-- Build the scrollable NPC list
+local function refreshNPCList()
+	for _, child in pairs(scroll:GetChildren()) do
+		if child:IsA("TextButton") then
+			child:Destroy()
+		end
+	end
+
+	local y = 0
+	for npc in pairs(NPCCache) do
+		if npc and npc.Parent then
+			local name = npc.Name
+			local enabled = EnabledNPCs[npc] == true
+
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(1, 0, 0, 32)
+			btn.BackgroundColor3 = enabled and Color3.fromRGB(0, 110, 50) or Color3.fromRGB(50, 50, 55)
+			btn.Text = (enabled and "[ON]  " or "[OFF] ") .. name
+			btn.Font = Enum.Font.Gotham
+			btn.TextSize = 13
+			btn.TextColor3 = Color3.new(1,1,1)
+			btn.BorderSizePixel = 0
+			btn.Parent = scroll
+			Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+
+			btn.MouseButton1Click:Connect(function()
+				EnabledNPCs[npc] = not EnabledNPCs[npc]
+				local now = EnabledNPCs[npc]
+				btn.BackgroundColor3 = now and Color3.fromRGB(0, 110, 50) or Color3.fromRGB(50, 50, 55)
+				btn.Text = (now and "[ON]  " or "[OFF] ") .. name
+				applyToAll()
+			end)
+			y = y + 38
+		end
+	end
+	scroll.CanvasSize = UDim2.new(0, 0, 0, y + 10)
+end
+
+scanBtn.MouseButton1Click:Connect(function()
+	refreshNPCList()
+	listPanel.Visible = true
+end)
+
+-- Buttons
+hitStatus.MouseButton1Click:Connect(function()
+	HITBOX_ON = not HITBOX_ON
+	hitStatus.Text = HITBOX_ON and "HITBOX: ON" or "HITBOX: OFF"
+	hitStatus.BackgroundColor3 = HITBOX_ON and Color3.fromRGB(0, 120, 50) or Color3.fromRGB(40, 40, 45)
+	applyToAll()
+end)
+
+partBtn.MouseButton1Click:Connect(function()
+	partName = partName == "Head" and "Torso" or "Head"
+	partBtn.Text = "Part: " .. partName
+	if HITBOX_ON then applyToAll() end
+end)
+
+sizeBox.FocusLost:Connect(function()
+	local n = tonumber(sizeBox.Text)
+	if n and n > 0 then
+		hitboxSize = n
+		if HITBOX_ON then applyToAll() end
+	end
+end)
+
+espStatus.MouseButton1Click:Connect(function()
+	ESP_ON = not ESP_ON
+	espStatus.Text = ESP_ON and "ESP: ON" or "ESP: OFF"
+	espStatus.BackgroundColor3 = ESP_ON and Color3.fromRGB(0, 120, 50) or Color3.fromRGB(40, 40, 45)
+	applyToAll()
+end)
+
+redBtn.MouseButton1Click:Connect(function()
+	currentColor = Color3.fromRGB(255, 50, 50)
+	if ESP_ON then applyToAll() end
+end)
+blueBtn.MouseButton1Click:Connect(function()
+	currentColor = Color3.fromRGB(52, 152, 219)
+	if ESP_ON then applyToAll() end
+end)
+greenBtn.MouseButton1Click:Connect(function()
+	currentColor = Color3.fromRGB(46, 204, 113)
+	if ESP_ON then applyToAll() end
+end)
+
+solidBtn.MouseButton1Click:Connect(function()
+	fillTrans = 0.25
+	if ESP_ON then applyToAll() end
+end)
+faintBtn.MouseButton1Click:Connect(function()
+	fillTrans = 0.7
+	if ESP_ON then applyToAll() end
+end)
+
+print("Optimized NPC Hitbox + ESP with Scan loaded")

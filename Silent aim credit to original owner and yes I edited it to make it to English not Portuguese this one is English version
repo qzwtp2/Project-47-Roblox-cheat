@@ -1,0 +1,136 @@
+-- Universal Pro v4.3 ENGLISH LOADER (original code, English UI only)
+local url = "https://raw.githubusercontent.com/Vitinho104/Silentaim-NPC-/main/Silentaim%20NPC"
+local ok, source = pcall(function() return game:HttpGet(url) end)
+if not ok or not source or #source < 1000 then
+    warn("[EN Loader] Failed to download: " .. tostring(source))
+    return
+end
+
+local function plainReplace(str, findStr, replStr)
+    local i, j = string.find(str, findStr, 1, true)
+    if not i then return str end
+    return string.sub(str, 1, i - 1) .. replStr .. string.sub(str, j + 1)
+end
+
+local replacements = {
+    {"'Controle Principal'", "'Main Controls'"},
+    {"'Ativar Silent Aim'", "'Enable Silent Aim'"},
+    {"'🎯 SILENT AIM ATIVADO'", "'🎯 SILENT AIM ENABLED'"},
+    {"'🎯 SILENT AIM DESATIVADO'", "'🎯 SILENT AIM DISABLED'"},
+    {"'Predição'", "'Prediction'"},
+    {"'Taxa de Atualização'", "'Update Rate'"},
+    {"'Lógica de Alvo'", "'Target Logic'"},
+    {"'Modo de Prioridade'", "'Priority Mode'"},
+    {"'Sticky Aim (Travar Alvo)'", "'Sticky Aim (Lock Target)'"},
+    {"'Modo de Alvo'", "'Target Mode'"},
+    {"'Parte do Corpo'", "'Body Part'"},
+    {"'Wall Check (Visibilidade)'", "'Wall Check (Visibility)'"},
+    {"'Dead Body Check (Ignorar Mortos)'", "'Dead Body Check (Ignore Dead)'"},
+    {"'Não mira em jogadores/NPCs mortos'", "'Does not aim at dead players/NPCs'"},
+    {"'Limite de Distância (NOVO)'", "'Distance Limit (NEW)'"},
+    {"'Ativar Limite de Distância'", "'Enable Distance Limit'"},
+    {"'Impede o Silent Aim de mirar em alvos muito distantes'", "'Prevents Silent Aim from targeting far away targets'"},
+    {"'Distância Máxima (studs)'", "'Max Distance (studs)'"},
+    {"'Alvos além desta distância serão ignorados'", "'Targets beyond this distance will be ignored'"},
+    {"'📌 Recomendado: 300-800 studs para evitar detecção'", "'📌 Recommended: 300-800 studs to avoid detection'"},
+    {"'⚡ Distâncias menores = mais seguro'", "'⚡ Smaller distances = safer'"},
+    {"'Proteção de Amigos (NOVO)'", "'Friend Protection (NEW)'"},
+    {"'Ignorar Amigos (Friend Check)'", "'Ignore Friends (Friend Check)'"},
+    {"'Não mira em jogadores que estão na sua lista de amigos do Roblox'", "'Does not aim at players on your Roblox friends list'"},
+    {"'✅ Funciona com lista de amigos do Roblox'", "'✅ Works with Roblox friends list'"},
+    {"'📌 Amigos serão ignorados pelo Silent Aim'", "'📌 Friends will be ignored by Silent Aim'"},
+    {"'Configurações de NPC'", "'NPC Settings'"},
+    {"'Modo NPC Agressivo (Otimizado)'", "'Aggressive NPC Mode (Optimized)'"},
+    {"'⚠️ MODO AGRESSIVO ATIVADO'", "'⚠️ AGGRESSIVE MODE ENABLED'"},
+    {"'Intervalo Cache (s)'", "'Cache Interval (s)'"},
+    {"'Forçar Atualização de Cache'", "'Force Cache Update'"},
+    {"'Cache Atualizado!'", "'Cache Updated!'"},
+    {"'Ativar Bullet Teleport'", "'Enable Bullet Teleport'"},
+    {"'Teleporta a origem do tiro para perto do alvo.'", "'Teleports the shot origin near the target.'"},
+    {"'🔫 BULLET TP ATIVADO'", "'🔫 BULLET TP ENABLED'"},
+    {"'🔫 BULLET TP DESATIVADO'", "'🔫 BULLET TP DISABLED'"},
+    {"'📌 Ignora obstáculos entre você e o alvo.'", "'📌 Ignores obstacles between you and the target.'"},
+    {"'⚡ Funciona com qualquer arma.'", "'⚡ Works with any weapon.'"},
+    {"'Visuais e Informações'", "'Visuals & Information'"},
+    {"'Cor do Círculo FOV'", "'FOV Circle Color'"},
+    {"'Cor FOV'", "'FOV Color'"},
+    {"'Highlight no Alvo'", "'Highlight Target'"},
+    {"'Cor Highlight NPC'", "'NPC Highlight Color'"},
+    {"'Cor Highlight Player'", "'Player Highlight Color'"},
+    {"'Mostrar Info do Alvo'", "'Show Target Info'"},
+    {"'Mostrar Nome/Tipo'", "'Show Name/Type'"},
+    {"'Mostrar HP'", "'Show HP'"},
+    {"'Mostrar Distância'", "'Show Distance'"},
+    {"'Mostrar Chance'", "'Show Chance'"},
+    {"'Limpar UI de Mira'", "'Clear Aim UI'"},
+    {"'Ativar ESP'", "'Enable ESP'"},
+    {"'Mostrar Players'", "'Show Players'"},
+    {"'Mostrar NPCs'", "'Show NPCs'"},
+    {"'Usar Cor do Time'", "'Use Team Color'"},
+    {"'Ocultar Corpos Mortos (Dead Check)'", "'Hide Dead Bodies (Dead Check)'"},
+    {"'Elementos Visuais'", "'Visual Elements'"},
+    {"'Mostrar Box'", "'Show Box'"},
+    {"'Mostrar Linha'", "'Show Line'"},
+    {"'Mostrar Stick'", "'Show Stick'"},
+    {"'Mostrar Nome'", "'Show Name'"},
+    {"'Mostrar HP Bar'", "'Show HP Bar'"},
+    {"'Mostrar Item Equipado'", "'Show Equipped Item'"},
+    {"'Mostrar Inventário Completo'", "'Show Full Inventory'"},
+    {"'Tamanhos e Distância'", "'Sizes & Distance'"},
+    {"'Distância Máxima'", "'Max Distance'"},
+    {"'Tamanho do Nome'", "'Name Size'"},
+    {"'Tamanho da Distância'", "'Distance Size'"},
+    {"'Tamanho do Inventário'", "'Inventory Size'"},
+    {"'Cores do ESP'", "'ESP Colors'"},
+    {"'Cor do Inimigo'", "'Enemy Color'"},
+    {"'Inimigo'", "'Enemy'"},
+    {"'Cor do Aliado'", "'Ally Color'"},
+    {"'Aliado'", "'Ally'"},
+    {"'Cor da Linha'", "'Line Color'"},
+    {"'Linha'", "'Line'"},
+    {"'Cor do Stick'", "'Stick Color'"},
+    {"'Bypass Anti-Cheat (NOVO)'", "'Anti-Cheat Bypass (NEW)'"},
+    {"'Bypass Adonis Anti-Cheat'", "'Adonis Anti-Cheat Bypass'"},
+    {"'Tenta bypassar o sistema Anti-Cheat do Adonis'", "'Attempts to bypass Adonis Anti-Cheat system'"},
+    {"'🛡️ Bypass Adonis ATIVADO'", "'🛡️ Adonis Bypass ENABLED'"},
+    {"'🛡️ Bypass Adonis DESATIVADO'", "'🛡️ Adonis Bypass DISABLED'"},
+    {"'⚠️ Funciona com a maioria dos servidores que usam Adonis'", "'⚠️ Works with most servers using Adonis'"},
+    {"'✅ Reaplica o bypass automaticamente se necessário'", "'✅ Automatically reapplies bypass if needed'"},
+    {"'📌 Use com moderação para evitar banimentos'", "'📌 Use moderately to avoid bans'"},
+    {"'🔄 Forçar Reaplicação do Bypass'", "'🔄 Force Reapply Bypass'"},
+    {"'🔄 Bypass reaplicado!'", "'🔄 Bypass reapplied!'"},
+    {"'🛡️ Anti-Kick Ativo: '", "'🛡️ Anti-Kick Active: '"},
+    {"'✅ Anti-Kick Otimizado carregado!'", "'✅ Optimized Anti-Kick loaded!'"},
+    {"'⚠️ Usando Anti-Kick Fallback'", "'⚠️ Using Anti-Kick Fallback'"},
+    {"'🔄 Tentar recarregar Anti-Kick'", "'🔄 Try reload Anti-Kick'"},
+    {"'📁 Gerenciamento de Configurações'", "'📁 Config Management'"},
+    {"'💾 Salvar Configurações'", "'💾 Save Settings'"},
+    {"'✅ Configurações salvas com sucesso!'", "'✅ Settings saved successfully!'"},
+    {"'📂 Carregar Configurações'", "'📂 Load Settings'"},
+    {"'✅ Configurações carregadas com sucesso!'", "'✅ Settings loaded successfully!'"},
+    {"'🔄 Resetar Configurações'", "'🔄 Reset Settings'"},
+    {"'🔄 Configurações resetadas!'", "'🔄 Settings reset!'"},
+    {"'🎨 Temas'", "'🎨 Themes'"},
+    {"'🔄 Recarregar Temas'", "'🔄 Reload Themes'"},
+    {"'🎨 Temas recarregados!'", "'🎨 Themes reloaded!'"},
+    {"'✅ UNIVERSAL PRO v4.3 CARREGADO! Distance Limit + Friend Check + Adonis Bypass'", "'✅ UNIVERSAL PRO v4.3 LOADED! Distance Limit + Friend Check + Adonis Bypass'"},
+    {'"Alvo travado"', '"Target locked"'},
+}
+
+for _, pair in ipairs(replacements) do
+    source = plainReplace(source, pair[1], pair[2])
+end
+
+source = plainReplace(source, "local remote = ReplicatedStorage:FindFirstChild(remoteName)", 'local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName)')
+source = plainReplace(source, "local remote = ReplicatedStorage:FindFirstChild(remoteName)", 'local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName)')
+
+print("[EN Loader] Running original script with English UI...")
+local fn, err = loadstring(source)
+if not fn then
+    warn("[EN Loader] loadstring failed: " .. tostring(err))
+    return
+end
+local runOk, runErr = pcall(fn)
+if not runOk then
+    warn("[EN Loader] Script error: " .. tostring(runErr))
+end

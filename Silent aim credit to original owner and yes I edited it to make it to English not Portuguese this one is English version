@@ -1,15 +1,34 @@
--- Universal Pro v4.3 ENGLISH LOADER (original code, English UI only)
+-- Universal Pro v4.3 ENGLISH LOADER + Friend Check fix
+-- Copy ALL of this into Arceus X and execute.
+
 local url = "https://raw.githubusercontent.com/Vitinho104/Silentaim-NPC-/main/Silentaim%20NPC"
-local ok, source = pcall(function() return game:HttpGet(url) end)
+
+print("[EN Loader] Downloading original script...")
+
+local ok, source = pcall(function()
+    return game:HttpGet(url)
+end)
+
 if not ok or not source or #source < 1000 then
     warn("[EN Loader] Failed to download: " .. tostring(source))
     return
 end
 
+print("[EN Loader] Download OK (" .. tostring(#source) .. " bytes). Translating...")
+
 local function plainReplace(str, findStr, replStr)
     local i, j = string.find(str, findStr, 1, true)
     if not i then return str end
     return string.sub(str, 1, i - 1) .. replStr .. string.sub(str, j + 1)
+end
+
+local function plainReplaceAll(str, findStr, replStr)
+    while true do
+        local i, j = string.find(str, findStr, 1, true)
+        if not i then break end
+        str = string.sub(str, 1, i - 1) .. replStr .. string.sub(str, j + 1)
+    end
+    return str
 end
 
 local replacements = {
@@ -36,9 +55,9 @@ local replacements = {
     {"'⚡ Distâncias menores = mais seguro'", "'⚡ Smaller distances = safer'"},
     {"'Proteção de Amigos (NOVO)'", "'Friend Protection (NEW)'"},
     {"'Ignorar Amigos (Friend Check)'", "'Ignore Friends (Friend Check)'"},
-    {"'Não mira em jogadores que estão na sua lista de amigos do Roblox'", "'Does not aim at players on your Roblox friends list'"},
-    {"'✅ Funciona com lista de amigos do Roblox'", "'✅ Works with Roblox friends list'"},
-    {"'📌 Amigos serão ignorados pelo Silent Aim'", "'📌 Friends will be ignored by Silent Aim'"},
+    {"'Não mira em jogadores que estão na sua lista de amigos do Roblox'", "'Never aims at Roblox friends — even if Team Check is OFF or Aggressive Mode is ON'"},
+    {"'✅ Funciona com lista de amigos do Roblox'", "'✅ Scans your Roblox friends list'"},
+    {"'📌 Amigos serão ignorados pelo Silent Aim'", "'📌 Friends never targeted (even with Team Check OFF)'"},
     {"'Configurações de NPC'", "'NPC Settings'"},
     {"'Modo NPC Agressivo (Otimizado)'", "'Aggressive NPC Mode (Optimized)'"},
     {"'⚠️ MODO AGRESSIVO ATIVADO'", "'⚠️ AGGRESSIVE MODE ENABLED'"},
@@ -121,16 +140,57 @@ for _, pair in ipairs(replacements) do
     source = plainReplace(source, pair[1], pair[2])
 end
 
-source = plainReplace(source, "local remote = ReplicatedStorage:FindFirstChild(remoteName)", 'local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName)')
-source = plainReplace(source, "local remote = ReplicatedStorage:FindFirstChild(remoteName)", 'local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName)')
+source = plainReplaceAll(source,
+    "local remote = ReplicatedStorage:FindFirstChild(remoteName)",
+    'local remote = game:GetService("ReplicatedStorage"):FindFirstChild(remoteName)')
 
-print("[EN Loader] Running original script with English UI...")
+local oldEnemy = [[local function IsEnemyPlayer(player)
+    if not _G.TeamCheck then return true end
+    if not player or not LocalPlayer.Team or not player.Team then return true end
+    
+    -- ✅ Friend Check: Amigos não são considerados inimigos
+    if _G.FriendCheck and IsFriend(player) then
+        return false
+    end
+    
+    return LocalPlayer.Team \~= player.Team
+end]]
+
+local newEnemy = [[local function IsEnemyPlayer(player)
+    if not player then return false end
+    if _G.FriendCheck and IsFriend(player) then
+        return false
+    end
+    if not _G.TeamCheck then return true end
+    if not LocalPlayer.Team or not player.Team then return true end
+    return LocalPlayer.Team \~= player.Team
+end]]
+
+if string.find(source, oldEnemy, 1, true) then
+    source = plainReplace(source, oldEnemy, newEnemy)
+    print("[EN Loader] Friend Check fix applied.")
+else
+    local shortOld = "if not _G.TeamCheck then return true end\n    if not player or not LocalPlayer.Team or not player.Team then return true end"
+    local shortNew = "if not player then return false end\n    if _G.FriendCheck and IsFriend(player) then return false end\n    if not _G.TeamCheck then return true end\n    if not LocalPlayer.Team or not player.Team then return true end"
+    if string.find(source, shortOld, 1, true) then
+        source = plainReplace(source, shortOld, shortNew)
+        print("[EN Loader] Friend Check fix applied (short).")
+    else
+        warn("[EN Loader] Could not patch IsEnemyPlayer (script may have changed).")
+    end
+end
+
+print("[EN Loader] Running script now...")
+
 local fn, err = loadstring(source)
 if not fn then
     warn("[EN Loader] loadstring failed: " .. tostring(err))
     return
 end
+
 local runOk, runErr = pcall(fn)
 if not runOk then
     warn("[EN Loader] Script error: " .. tostring(runErr))
+else
+    print("[EN Loader] Done. English UI + Friend Check ignores friends even with Team Check OFF.")
 end

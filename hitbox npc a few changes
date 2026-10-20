@@ -1,0 +1,621 @@
+--// Legacy NPC Only (No Player Hitbox)
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local lp = Players.LocalPlayer
+local pg = lp:WaitForChild("PlayerGui")
+
+local launcher = Instance.new("ScreenGui")
+launcher.Name = "Launcher"
+launcher.ResetOnSpawn = false
+launcher.Parent = pg
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 230, 0, 145)
+frame.Position = UDim2.new(0.5, -115, 0.5, -72)
+frame.BackgroundColor3 = Color3.fromRGB(16,16,22)
+frame.BorderSizePixel = 0
+frame.Parent = launcher
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1,0,0,35)
+title.BackgroundColor3 = Color3.fromRGB(24,24,32)
+title.Text = "Choose Version"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.TextColor3 = Color3.fromRGB(180,160,255)
+title.BorderSizePixel = 0
+title.Parent = frame
+Instance.new("UICorner", title).CornerRadius = UDim.new(0, 10)
+
+local normalBtn = Instance.new("TextButton")
+normalBtn.Size = UDim2.new(0, 190, 0, 35)
+normalBtn.Position = UDim2.new(0, 20, 0, 48)
+normalBtn.BackgroundColor3 = Color3.fromRGB(0,130,60)
+normalBtn.Text = "Normal Hitbox NPC"
+normalBtn.Font = Enum.Font.GothamBold
+normalBtn.TextSize = 13
+normalBtn.TextColor3 = Color3.new(1,1,1)
+normalBtn.BorderSizePixel = 0
+normalBtn.Parent = frame
+Instance.new("UICorner", normalBtn).CornerRadius = UDim.new(0, 8)
+
+local musicBtn = Instance.new("TextButton")
+musicBtn.Size = UDim2.new(0, 190, 0, 35)
+musicBtn.Position = UDim2.new(0, 20, 0, 95)
+musicBtn.BackgroundColor3 = Color3.fromRGB(0,90,170)
+musicBtn.Text = "Music + Hitbox NPC"
+musicBtn.Font = Enum.Font.GothamBold
+musicBtn.TextSize = 13
+musicBtn.TextColor3 = Color3.new(1,1,1)
+musicBtn.BorderSizePixel = 0
+musicBtn.Parent = frame
+Instance.new("UICorner", musicBtn).CornerRadius = UDim.new(0, 8)
+
+local function start(music)
+	launcher:Destroy()
+	if music then
+		pcall(function()
+			loadstring(game:HttpGet("https://raw.githubusercontent.com/HaTapLamScript/MAMBO-PROJECT/refs/heads/main/Script/UNIVERSAL/Youtube_player.lua"))()
+		end)
+	end
+	loadLegacy()
+end
+
+normalBtn.MouseButton1Click:Connect(function() start(false) end)
+musicBtn.MouseButton1Click:Connect(function() start(true) end)
+
+function loadLegacy()
+	local HITBOX_ON = false
+	local ESP_ON = false
+	local MELEE_ON = false
+	local UNSURE = false
+
+	local headSize = 4
+	local bodySize = 7
+	local useHead = true
+	local useBody = false
+	local currentColor = Color3.fromRGB(255,50,50)
+	local fillTrans = 0.5
+
+	local AggressiveTargets = {}
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "Legacy"
+	gui.ResetOnSpawn = false
+	gui.Parent = pg
+
+	local eye = Instance.new("TextButton")
+	eye.Size = UDim2.new(0, 42, 0, 42)
+	eye.Position = UDim2.new(0, 12, 0.45, 0)
+	eye.BackgroundColor3 = Color3.fromRGB(18,18,28)
+	eye.Text = "👁️"
+	eye.TextSize = 19
+	eye.Font = Enum.Font.GothamBold
+	eye.TextColor3 = Color3.new(1,1,1)
+	eye.BorderSizePixel = 0
+	eye.Parent = gui
+	Instance.new("UICorner", eye).CornerRadius = UDim.new(1, 0)
+
+	local main = Instance.new("Frame")
+	main.Size = UDim2.new(0, 340, 0, 270)
+	main.Position = UDim2.new(0.5, -170, 0.5, -135)
+	main.BackgroundColor3 = Color3.fromRGB(14,14,20)
+	main.BorderSizePixel = 0
+	main.Visible = false
+	main.Parent = gui
+	Instance.new("UICorner", main).CornerRadius = UDim.new(0, 11)
+
+	local titleBar = Instance.new("Frame")
+	titleBar.Size = UDim2.new(1,0,0,32)
+	titleBar.BackgroundColor3 = Color3.fromRGB(20,20,30)
+	titleBar.BorderSizePixel = 0
+	titleBar.Parent = main
+	Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 11)
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -35, 1, 0)
+	title.Position = UDim2.new(0, 12, 0, 0)
+	title.BackgroundTransparency = 1
+	title.Text = "Legacy Mode"
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 14
+	title.TextColor3 = Color3.fromRGB(180,150,255)
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = titleBar
+
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.new(0, 26, 0, 26)
+	closeBtn.Position = UDim2.new(1, -30, 0, 3)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(35,35,45)
+	closeBtn.Text = "X"
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.TextSize = 13
+	closeBtn.TextColor3 = Color3.new(1,1,1)
+	closeBtn.BorderSizePixel = 0
+	closeBtn.Parent = titleBar
+	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+
+	local side = Instance.new("Frame")
+	side.Size = UDim2.new(0, 80, 1, -40)
+	side.Position = UDim2.new(0, 6, 0, 36)
+	side.BackgroundColor3 = Color3.fromRGB(18,18,26)
+	side.BorderSizePixel = 0
+	side.Parent = main
+	Instance.new("UICorner", side).CornerRadius = UDim.new(0, 9)
+
+	local function makeTab(name, y)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.new(1, -8, 0, 28)
+		b.Position = UDim2.new(0, 4, 0, y)
+		b.BackgroundColor3 = Color3.fromRGB(28,28,38)
+		b.Text = name
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 12
+		b.TextColor3 = Color3.new(1,1,1)
+		b.BorderSizePixel = 0
+		b.Parent = side
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+		return b
+	end
+
+	local hitboxTab = makeTab("Hitbox", 6)
+	local espTab = makeTab("ESP", 40)
+	local moreTab = makeTab("More", 74)
+
+	local content = Instance.new("Frame")
+	content.Size = UDim2.new(1, -95, 1, -46)
+	content.Position = UDim2.new(0, 90, 0, 40)
+	content.BackgroundTransparency = 1
+	content.Parent = main
+
+	local hitboxPage = Instance.new("Frame")
+	hitboxPage.Size = UDim2.new(1,0,1,0)
+	hitboxPage.BackgroundTransparency = 1
+	hitboxPage.Parent = content
+
+	local espPage = Instance.new("Frame")
+	espPage.Size = UDim2.new(1,0,1,0)
+	espPage.BackgroundTransparency = 1
+	espPage.Visible = false
+	espPage.Parent = content
+
+	local morePage = Instance.new("Frame")
+	morePage.Size = UDim2.new(1,0,1,0)
+	morePage.BackgroundTransparency = 1
+	morePage.Visible = false
+	morePage.Parent = content
+
+	local function label(text, y, parent)
+		local l = Instance.new("TextLabel")
+		l.Size = UDim2.new(1,0,0,18)
+		l.Position = UDim2.new(0,5,0,y)
+		l.BackgroundTransparency = 1
+		l.Text = text
+		l.Font = Enum.Font.GothamBold
+		l.TextSize = 12
+		l.TextColor3 = Color3.fromRGB(200,190,255)
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.Parent = parent
+	end
+
+	-- Hitbox Page
+	label("Head", 5, hitboxPage)
+	label("Body", 38, hitboxPage)
+	label("Melee", 71, hitboxPage)
+	label("Unsure", 104, hitboxPage)
+	label("Head Size", 145, hitboxPage)
+	label("Body Size", 178, hitboxPage)
+
+	local headToggle = Instance.new("TextButton")
+	headToggle.Size = UDim2.new(0,48,0,22)
+	headToggle.Position = UDim2.new(1,-55,0,4)
+	headToggle.BackgroundColor3 = Color3.fromRGB(0,150,80)
+	headToggle.Text = "ON"
+	headToggle.Font = Enum.Font.GothamBold
+	headToggle.TextSize = 11
+	headToggle.TextColor3 = Color3.new(1,1,1)
+	headToggle.BorderSizePixel = 0
+	headToggle.Parent = hitboxPage
+	Instance.new("UICorner", headToggle).CornerRadius = UDim.new(0,6)
+
+	local bodyToggle = Instance.new("TextButton")
+	bodyToggle.Size = UDim2.new(0,48,0,22)
+	bodyToggle.Position = UDim2.new(1,-55,0,37)
+	bodyToggle.BackgroundColor3 = Color3.fromRGB(50,50,60)
+	bodyToggle.Text = "OFF"
+	bodyToggle.Font = Enum.Font.GothamBold
+	bodyToggle.TextSize = 11
+	bodyToggle.TextColor3 = Color3.new(1,1,1)
+	bodyToggle.BorderSizePixel = 0
+	bodyToggle.Parent = hitboxPage
+	Instance.new("UICorner", bodyToggle).CornerRadius = UDim.new(0,6)
+
+	local meleeToggle = Instance.new("TextButton")
+	meleeToggle.Size = UDim2.new(0,48,0,22)
+	meleeToggle.Position = UDim2.new(1,-55,0,70)
+	meleeToggle.BackgroundColor3 = Color3.fromRGB(50,50,60)
+	meleeToggle.Text = "OFF"
+	meleeToggle.Font = Enum.Font.GothamBold
+	meleeToggle.TextSize = 11
+	meleeToggle.TextColor3 = Color3.new(1,1,1)
+	meleeToggle.BorderSizePixel = 0
+	meleeToggle.Parent = hitboxPage
+	Instance.new("UICorner", meleeToggle).CornerRadius = UDim.new(0,6)
+
+	local unsureBtn = Instance.new("TextButton")
+	unsureBtn.Size = UDim2.new(0,48,0,22)
+	unsureBtn.Position = UDim2.new(1,-55,0,103)
+	unsureBtn.BackgroundColor3 = Color3.fromRGB(50,50,60)
+	unsureBtn.Text = "OFF"
+	unsureBtn.Font = Enum.Font.GothamBold
+	unsureBtn.TextSize = 11
+	unsureBtn.TextColor3 = Color3.new(1,1,1)
+	unsureBtn.BorderSizePixel = 0
+	unsureBtn.Parent = hitboxPage
+	Instance.new("UICorner", unsureBtn).CornerRadius = UDim.new(0,6)
+
+	local headBox = Instance.new("TextBox")
+	headBox.Size = UDim2.new(0,48,0,22)
+	headBox.Position = UDim2.new(1,-55,0,143)
+	headBox.BackgroundColor3 = Color3.fromRGB(28,28,38)
+	headBox.Text = "4"
+	headBox.Font = Enum.Font.Gotham
+	headBox.TextSize = 12
+	headBox.TextColor3 = Color3.new(1,1,1)
+	headBox.BorderSizePixel = 0
+	headBox.Parent = hitboxPage
+	Instance.new("UICorner", headBox).CornerRadius = UDim.new(0,6)
+
+	local bodyBox = Instance.new("TextBox")
+	bodyBox.Size = UDim2.new(0,48,0,22)
+	bodyBox.Position = UDim2.new(1,-55,0,176)
+	bodyBox.BackgroundColor3 = Color3.fromRGB(28,28,38)
+	bodyBox.Text = "7"
+	bodyBox.Font = Enum.Font.Gotham
+	bodyBox.TextSize = 12
+	bodyBox.TextColor3 = Color3.new(1,1,1)
+	bodyBox.BorderSizePixel = 0
+	bodyBox.Parent = hitboxPage
+	Instance.new("UICorner", bodyBox).CornerRadius = UDim.new(0,6)
+
+	local hitboxStatus = Instance.new("TextButton")
+	hitboxStatus.Size = UDim2.new(0,120,0,26)
+	hitboxStatus.Position = UDim2.new(0.5,-60,1,-38)
+	hitboxStatus.BackgroundColor3 = Color3.fromRGB(50,50,65)
+	hitboxStatus.Text = "Hitbox: OFF"
+	hitboxStatus.Font = Enum.Font.GothamBold
+	hitboxStatus.TextSize = 12
+	hitboxStatus.TextColor3 = Color3.new(1,1,1)
+	hitboxStatus.BorderSizePixel = 0
+	hitboxStatus.Parent = hitboxPage
+	Instance.new("UICorner", hitboxStatus).CornerRadius = UDim.new(0,7)
+
+	-- ESP Page
+	label("Colors", 5, espPage)
+	local function makeColor(name, col, x)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.new(0,55,0,26)
+		b.Position = UDim2.new(0,x,0,30)
+		b.BackgroundColor3 = col
+		b.Text = name
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 11
+		b.TextColor3 = Color3.new(1,1,1)
+		b.BorderSizePixel = 0
+		b.Parent = espPage
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
+		return b
+	end
+	local redBtn = makeColor("Red", Color3.fromRGB(231,76,60), 5)
+	local blueBtn = makeColor("Blue", Color3.fromRGB(52,152,219), 70)
+	local greenBtn = makeColor("Green", Color3.fromRGB(46,204,113), 135)
+
+	local espStatus = Instance.new("TextButton")
+	espStatus.Size = UDim2.new(0,120,0,26)
+	espStatus.Position = UDim2.new(0.5,-60,1,-38)
+	espStatus.BackgroundColor3 = Color3.fromRGB(50,50,65)
+	espStatus.Text = "ESP: OFF"
+	espStatus.Font = Enum.Font.GothamBold
+	espStatus.TextSize = 12
+	espStatus.TextColor3 = Color3.new(1,1,1)
+	espStatus.BorderSizePixel = 0
+	espStatus.Parent = espPage
+	Instance.new("UICorner", espStatus).CornerRadius = UDim.new(0,7)
+
+	-- More Page
+	label("Force Rescan", 5, morePage)
+	local rescanBtn = Instance.new("TextButton")
+	rescanBtn.Size = UDim2.new(0,120,0,28)
+	rescanBtn.Position = UDim2.new(0.5,-60,0,40)
+	rescanBtn.BackgroundColor3 = Color3.fromRGB(0,100,180)
+	rescanBtn.Text = "Force Rescan"
+	rescanBtn.Font = Enum.Font.GothamBold
+	rescanBtn.TextSize = 12
+	rescanBtn.TextColor3 = Color3.new(1,1,1)
+	rescanBtn.BorderSizePixel = 0
+	rescanBtn.Parent = morePage
+	Instance.new("UICorner", rescanBtn).CornerRadius = UDim.new(0,7)
+
+	local function switch(page)
+		hitboxPage.Visible = false
+		espPage.Visible = false
+		morePage.Visible = false
+		page.Visible = true
+	end
+
+	hitboxTab.MouseButton1Click:Connect(function() switch(hitboxPage) end)
+	espTab.MouseButton1Click:Connect(function() switch(espPage) end)
+	moreTab.MouseButton1Click:Connect(function() switch(morePage) end)
+
+	eye.MouseButton1Click:Connect(function() main.Visible = not main.Visible end)
+	closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
+
+	local function makeDraggable(handle, panel)
+		local dragging, start, pos
+		handle.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				start = input.Position
+				pos = panel.Position
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then
+						dragging = false
+					end
+				end)
+			end
+		end)
+		UIS.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				local delta = input.Position - start
+				panel.Position = UDim2.new(pos.X.Scale, pos.X.Offset + delta.X, pos.Y.Scale, pos.Y.Offset + delta.Y)
+			end
+		end)
+	end
+	makeDraggable(titleBar, main)
+	makeDraggable(eye, eye)
+
+	local function isNPC(model)
+		if not model or not model:IsA("Model") then return false end
+		local hum = model:FindFirstChildOfClass("Humanoid")
+		if not hum then return false end
+		return Players:GetPlayerFromCharacter(model) == nil
+	end
+
+	local function markAggressive(model)
+		if model and model.Parent then
+			AggressiveTargets[model] = true
+		end
+	end
+
+	local function applyNPCHitbox(char)
+		if UNSURE and not AggressiveTargets[char] then
+			return
+		end
+
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then return end
+
+		local head = char:FindFirstChild("Head")
+		local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+
+		if useHead and head then
+			head.Size = Vector3.new(headSize, headSize, headSize)
+			head.Material = Enum.Material.Neon
+			head.Color = Color3.fromRGB(255,40,40)
+			head.CanCollide = false
+		end
+		if useBody and hrp then
+			hrp.Size = Vector3.new(bodySize, bodySize, bodySize)
+			hrp.Material = Enum.Material.Neon
+			hrp.Color = Color3.fromRGB(255,40,40)
+			hrp.CanCollide = false
+		end
+		if MELEE_ON then
+			for _, part in pairs(char:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.Size = Vector3.new(5,5,5)
+					part.CanCollide = false
+				end
+			end
+		end
+	end
+
+	local function applyESP(char)
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then return end
+		local h = char:FindFirstChild("NPCHighlight")
+		if not h then
+			h = Instance.new("Highlight")
+			h.Name = "NPCHighlight"
+			h.Adornee = char
+			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			h.Parent = char
+		end
+		h.FillColor = currentColor
+		h.FillTransparency = fillTrans
+		h.Enabled = true
+	end
+
+	local function applyToAll()
+		for _, obj in pairs(Workspace:GetDescendants()) do
+			if obj:IsA("Model") and isNPC(obj) then
+				if HITBOX_ON then
+					applyNPCHitbox(obj)
+				end
+				if ESP_ON then
+					applyESP(obj)
+				end
+			end
+		end
+	end
+
+	-- Detect when you take damage
+	local function onLocalHealthChanged()
+		local char = lp.Character
+		if not char then return end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum then return end
+
+		local lastHealth = hum.Health
+		hum.HealthChanged:Connect(function(newHealth)
+			if newHealth < lastHealth then
+				local root = char:FindFirstChild("HumanoidRootPart")
+				if root then
+					for _, obj in pairs(Workspace:GetDescendants()) do
+						if obj:IsA("Model") and isNPC(obj) then
+							local otherRoot = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso")
+							if otherRoot and (otherRoot.Position - root.Position).Magnitude < 25 then
+								markAggressive(obj)
+								if HITBOX_ON then
+									applyNPCHitbox(obj)
+								end
+							end
+						end
+					end
+				end
+			end
+			lastHealth = newHealth
+		end)
+	end
+
+	-- Detect when you attack
+	local function setupAttackDetection()
+		local char = lp.Character
+		if not char then return end
+		local function onTool(tool)
+			if tool:IsA("Tool") then
+				tool.Activated:Connect(function()
+					local root = char:FindFirstChild("HumanoidRootPart")
+					if not root then return end
+					for _, obj in pairs(Workspace:GetDescendants()) do
+						if obj:IsA("Model") and isNPC(obj) then
+							local otherRoot = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso")
+							if otherRoot and (otherRoot.Position - root.Position).Magnitude < 20 then
+								markAggressive(obj)
+								if HITBOX_ON then
+									applyNPCHitbox(obj)
+								end
+							end
+						end
+					end
+				end)
+			end
+		end
+		char.ChildAdded:Connect(onTool)
+		for _, child in pairs(char:GetChildren()) do
+			onTool(child)
+		end
+	end
+
+	local function onCharacter(char)
+		task.wait(0.5)
+		onLocalHealthChanged()
+		setupAttackDetection()
+	end
+
+	if lp.Character then
+		onCharacter(lp.Character)
+	end
+	lp.CharacterAdded:Connect(onCharacter)
+
+	Workspace.DescendantAdded:Connect(function(obj)
+		if obj:IsA("Humanoid") and obj.Parent then
+			task.defer(function()
+				if isNPC(obj.Parent) then
+					if HITBOX_ON then
+						applyNPCHitbox(obj.Parent)
+					end
+					if ESP_ON then
+						applyESP(obj.Parent)
+					end
+				end
+			end)
+		end
+	end)
+
+	-- Buttons
+	headToggle.MouseButton1Click:Connect(function()
+		useHead = not useHead
+		headToggle.Text = useHead and "ON" or "OFF"
+		headToggle.BackgroundColor3 = useHead and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
+		applyToAll()
+	end)
+
+	bodyToggle.MouseButton1Click:Connect(function()
+		useBody = not useBody
+		bodyToggle.Text = useBody and "ON" or "OFF"
+		bodyToggle.BackgroundColor3 = useBody and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
+		applyToAll()
+	end)
+
+	meleeToggle.MouseButton1Click:Connect(function()
+		MELEE_ON = not MELEE_ON
+		meleeToggle.Text = MELEE_ON and "ON" or "OFF"
+		meleeToggle.BackgroundColor3 = MELEE_ON and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
+		applyToAll()
+	end)
+
+	unsureBtn.MouseButton1Click:Connect(function()
+		UNSURE = not UNSURE
+		unsureBtn.Text = UNSURE and "ON" or "OFF"
+		unsureBtn.BackgroundColor3 = UNSURE and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
+		if not UNSURE then
+			AggressiveTargets = {}
+		end
+		applyToAll()
+	end)
+
+	headBox.FocusLost:Connect(function()
+		local n = tonumber(headBox.Text)
+		if n and n > 0 then
+			headSize = n
+			applyToAll()
+		end
+	end)
+
+	bodyBox.FocusLost:Connect(function()
+		local n = tonumber(bodyBox.Text)
+		if n and n > 0 then
+			bodySize = n
+			applyToAll()
+		end
+	end)
+
+	hitboxStatus.MouseButton1Click:Connect(function()
+		HITBOX_ON = not HITBOX_ON
+		hitboxStatus.Text = HITBOX_ON and "Hitbox: ON" or "Hitbox: OFF"
+		hitboxStatus.BackgroundColor3 = HITBOX_ON and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,65)
+		applyToAll()
+	end)
+
+	espStatus.MouseButton1Click:Connect(function()
+		ESP_ON = not ESP_ON
+		espStatus.Text = ESP_ON and "ESP: ON" or "ESP: OFF"
+		espStatus.BackgroundColor3 = ESP_ON and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,65)
+		applyToAll()
+	end)
+
+	redBtn.MouseButton1Click:Connect(function()
+		currentColor = Color3.fromRGB(255,50,50)
+		if ESP_ON then applyToAll() end
+	end)
+	blueBtn.MouseButton1Click:Connect(function()
+		currentColor = Color3.fromRGB(52,152,219)
+		if ESP_ON then applyToAll() end
+	end)
+	greenBtn.MouseButton1Click:Connect(function()
+		currentColor = Color3.fromRGB(46,204,113)
+		if ESP_ON then applyToAll() end
+	end)
+
+	rescanBtn.MouseButton1Click:Connect(function()
+		applyToAll()
+	end)
+
+	print("Legacy NPC Only loaded")
+end
+
+print("Ready")

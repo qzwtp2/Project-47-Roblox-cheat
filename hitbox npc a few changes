@@ -1,4 +1,4 @@
---// Legacy NPC - Full Version (Fixed Sound Spam + 8 Second Highlight)
+--// Legacy NPC - Full Version (Red symbol toggle + Indicator only for you)
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -18,6 +18,8 @@ local REMOVE_ON_DEATH = true
 local DEATH_WHISPER = false
 local PULSE = false
 local AGGRO_SOUND = false
+local INDICATOR = false
+local RED_SYMBOL = false          -- NEW - OFF by default
 
 local headSize = 4
 local bodySize = 7
@@ -26,17 +28,18 @@ local useBody = false
 local transparency = 0.55
 local currentColor = Color3.fromRGB(255, 40, 40)
 local fillTrans = 0.5
-local maxDistance = 200
+local maxDistance = 300
 
 local Blacklist = {}
 local ModifiedParts = {}
 local KnownNPCs = {}
 local ActiveHighlights = {}
-local DamagedNPCs = {}
 local TempHighlights = {}
+local Indicators = {}
 
 local lastSoundTime = 0
-local SOUND_COOLDOWN = 3 -- seconds between sounds
+local SOUND_COOLDOWN = 2.5
+local lastPlayerShot = 0          -- tracks when YOU last shot
 
 local Descriptions = {
 	["Head"] = "Expands only the NPC's head.",
@@ -47,7 +50,9 @@ local Descriptions = {
 	["Remove on Death"] = "Removes hitbox the moment NPC dies so bullets don't hit the corpse.",
 	["Death Whisper"] = "Shows a scary message when an NPC dies.",
 	["Hitbox Pulse"] = "Makes the hitbox flash when first applied.",
-	["Aggro Sound"] = "Plays 'I'm very angry' when you shoot an NPC or when an NPC hits you."
+	["Aggro Sound"] = "Only plays when an NPC damages YOU.",
+	["Indicator"] = "? = you shot them\n!!! = they damaged you\n(Only works for you)",
+	["Red symbol"] = "Temporary red highlight when NPC damages you. OFF by default."
 }
 
 local scaryMessages = {
@@ -59,30 +64,63 @@ local scaryMessages = {
 	"You will never be alone..."
 }
 
--- Aggro Sound
 local angrySound = Instance.new("Sound")
-angrySound.SoundId = "rbxassetid://0" -- ← REPLACE 0 WITH YOUR SOUND ID
-angrySound.Volume = 1.2
+angrySound.SoundId = "rbxassetid://17632035882"
+angrySound.Volume = 1.4
 angrySound.Parent = SoundService
 
 local function playAggroSound()
 	if not AGGRO_SOUND then return end
-	if angrySound.SoundId == "rbxassetid://0" then return end
 	if tick() - lastSoundTime < SOUND_COOLDOWN then return end
 	lastSoundTime = tick()
 	angrySound:Play()
 end
 
--- Temporary 8 second highlight
+local function clearIndicator(char)
+	if Indicators[char] then
+		Indicators[char]:Destroy()
+		Indicators[char] = nil
+	end
+end
+
+local function setIndicator(char, text, color)
+	if not INDICATOR or not char or not char.Parent then return end
+	clearIndicator(char)
+
+	local root = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
+	if not root then return end
+
+	local bill = Instance.new("BillboardGui")
+	bill.Name = "NPCIndicator"
+	bill.Size = UDim2.new(0, 60, 0, 40)
+	bill.StudsOffset = Vector3.new(0, 3.2, 0)
+	bill.AlwaysOnTop = true
+	bill.Adornee = root
+	bill.Parent = char
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = color or Color3.fromRGB(255, 255, 100)
+	label.TextStrokeTransparency = 0.3
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 22
+	label.Parent = bill
+
+	Indicators[char] = bill
+end
+
 local function tempHighlight(char)
+	if not RED_SYMBOL then return end          -- only if Red symbol is ON
 	if not char or not char.Parent then return end
 	if TempHighlights[char] then return end
 
 	local h = Instance.new("Highlight")
 	h.Name = "TempAggroHighlight"
 	h.Adornee = char
-	h.FillColor = Color3.fromRGB(255, 50, 50)
-	h.FillTransparency = 0.3
+	h.FillColor = Color3.fromRGB(255, 40, 40)
+	h.FillTransparency = 0.25
 	h.OutlineColor = Color3.fromRGB(255, 0, 0)
 	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	h.Parent = char
@@ -90,12 +128,18 @@ local function tempHighlight(char)
 	TempHighlights[char] = h
 
 	task.delay(8, function()
-		if h and h.Parent then
-			h:Destroy()
-		end
+		if h and h.Parent then h:Destroy() end
 		TempHighlights[char] = nil
 	end)
 end
+
+-- Track when YOU shoot (for Indicator ?)
+UIS.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		lastPlayerShot = tick()
+	end
+end)
 
 -- Launcher
 local launcher = Instance.new("ScreenGui")
@@ -276,7 +320,7 @@ function loadLegacy()
 	colorPage.Parent = content
 
 	local descFrame = Instance.new("Frame")
-	descFrame.Size = UDim2.new(0, 210, 0, 70)
+	descFrame.Size = UDim2.new(0, 210, 0, 80)
 	descFrame.BackgroundColor3 = Color3.fromRGB(25,25,35)
 	descFrame.BorderSizePixel = 0
 	descFrame.Visible = false
@@ -299,9 +343,9 @@ function loadLegacy()
 
 	local function showDesc(text)
 		descLabel.Text = text
-		descFrame.Position = UDim2.new(0.5, -105, 0.5, -35)
+		descFrame.Position = UDim2.new(0.5, -105, 0.5, -40)
 		descFrame.Visible = true
-		task.delay(3, function()
+		task.delay(3.5, function()
 			descFrame.Visible = false
 		end)
 	end
@@ -352,6 +396,7 @@ function loadLegacy()
 		return btn
 	end
 
+	-- Hitbox Page
 	local headToggle = makeToggle("Head", 5, hitboxPage, true)
 	local bodyToggle = makeToggle("Body", 35, hitboxPage, false)
 	local meleeToggle = makeToggle("Melee", 65, hitboxPage, false)
@@ -413,6 +458,7 @@ function loadLegacy()
 	hitboxStatus.Parent = hitboxPage
 	Instance.new("UICorner", hitboxStatus).CornerRadius = UDim.new(0,7)
 
+	-- ESP Page
 	label("ESP Colors", 5, espPage)
 	local function makeColorBtn(name, col, x)
 		local b = Instance.new("TextButton")
@@ -469,8 +515,39 @@ function loadLegacy()
 	espStatus.Parent = espPage
 	Instance.new("UICorner", espStatus).CornerRadius = UDim.new(0,7)
 
-	label("More features in Hitbox tab", 10, morePage)
+	-- MORE PAGE
+	label("Max Distance Cap", 10, morePage)
+	label("(Default 300 | Max 2000)", 30, morePage)
 
+	local distBox = Instance.new("TextBox")
+	distBox.Size = UDim2.new(0, 80, 0, 26)
+	distBox.Position = UDim2.new(0, 5, 0, 55)
+	distBox.BackgroundColor3 = Color3.fromRGB(28,28,38)
+	distBox.Text = "300"
+	distBox.Font = Enum.Font.GothamBold
+	distBox.TextSize = 13
+	distBox.TextColor3 = Color3.new(1,1,1)
+	distBox.BorderSizePixel = 0
+	distBox.Parent = morePage
+	Instance.new("UICorner", distBox).CornerRadius = UDim.new(0,6)
+
+	local indicatorToggle = makeToggle("Indicator", 95, morePage, false)
+	local redSymbolToggle = makeToggle("Red symbol", 125, morePage, false)   -- NEW
+
+	local distInfo = Instance.new("TextLabel")
+	distInfo.Size = UDim2.new(1, -10, 0, 50)
+	distInfo.Position = UDim2.new(0, 5, 0, 160)
+	distInfo.BackgroundTransparency = 1
+	distInfo.Text = "Indicator only works for YOU.\nRed symbol = temporary red glow (off by default)."
+	distInfo.Font = Enum.Font.Gotham
+	distInfo.TextSize = 11
+	distInfo.TextColor3 = Color3.fromRGB(180,180,200)
+	distInfo.TextXAlignment = Enum.TextXAlignment.Left
+	distInfo.TextYAlignment = Enum.TextYAlignment.Top
+	distInfo.TextWrapped = true
+	distInfo.Parent = morePage
+
+	-- Color Page
 	label("Hitbox Color", 5, colorPage)
 	local function makeHitColor(name, col, x, y)
 		local b = Instance.new("TextButton")
@@ -529,7 +606,7 @@ function loadLegacy()
 	makeDraggable(titleBar, main)
 	makeDraggable(eye, eye)
 
-	-- ========== CORE ==========
+	-- CORE
 	local function isNPC(model)
 		if not model or not model:IsA("Model") then return false end
 		if Blacklist[model.Name] then return false end
@@ -618,13 +695,6 @@ function loadLegacy()
 		end)
 	end
 
-	local function onNPCDamaged(char)
-		if not AGGRO_SOUND then return end
-		if DamagedNPCs[char] then return end
-		DamagedNPCs[char] = true
-		playAggroSound()
-	end
-
 	local function applyNPCHitbox(char)
 		if not isNPC(char) then return end
 		local dist = getDistance(char)
@@ -693,6 +763,9 @@ function loadLegacy()
 
 	local function applyESP(char)
 		if not isNPC(char) then return end
+		local dist = getDistance(char)
+		if dist > maxDistance then return end
+
 		local hum = char:FindFirstChildOfClass("Humanoid")
 		if not hum or hum.Health <= 0 then return end
 
@@ -725,6 +798,8 @@ function loadLegacy()
 			ActiveHighlights[char] = nil
 		end
 
+		clearIndicator(char)
+
 		if DEATH_WHISPER then
 			local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
 			if root then
@@ -733,7 +808,6 @@ function loadLegacy()
 		end
 
 		KnownNPCs[char] = nil
-		DamagedNPCs[char] = nil
 	end
 
 	local function registerNPC(char)
@@ -747,15 +821,18 @@ function loadLegacy()
 				onNPCDied(char)
 			end)
 
+			-- Only show ? if YOU recently shot
 			hum.HealthChanged:Connect(function()
-				if hum.Health < hum.MaxHealth then
-					onNPCDamaged(char)
+				if hum.Health < hum.MaxHealth and INDICATOR then
+					if tick() - lastPlayerShot < 1.2 then   -- only if you shot in the last 1.2 seconds
+						setIndicator(char, "?", Color3.fromRGB(255, 255, 80))
+					end
 				end
 			end)
 		end
 	end
 
-	-- When player takes damage → play sound + highlight nearby NPCs for 8 seconds
+	-- ONLY when NPC damages YOU
 	local function setupPlayerDamageDetection()
 		local function connectCharacter(char)
 			local hum = char:WaitForChild("Humanoid", 5)
@@ -764,15 +841,16 @@ function loadLegacy()
 			local lastHealth = hum.Health
 			hum.HealthChanged:Connect(function(newHealth)
 				if newHealth < lastHealth then
-					-- Player took damage
 					playAggroSound()
 
-					-- Highlight nearby NPCs for 8 seconds
 					for npc in pairs(KnownNPCs) do
 						if npc and npc.Parent then
 							local dist = getDistance(npc)
-							if dist <= 60 then
-								tempHighlight(npc)
+							if dist <= 90 then
+								tempHighlight(npc)          -- only if Red symbol is ON
+								if INDICATOR then
+									setIndicator(npc, "!!!", Color3.fromRGB(255, 60, 60))
+								end
 							end
 						end
 					end
@@ -788,7 +866,6 @@ function loadLegacy()
 	end
 	setupPlayerDamageDetection()
 
-	-- Initial scan
 	for _, obj in pairs(Workspace:GetDescendants()) do
 		if obj:IsA("Model") and isNPC(obj) then
 			registerNPC(obj)
@@ -808,7 +885,7 @@ function loadLegacy()
 	local lastUpdate = 0
 	RunService.Heartbeat:Connect(function()
 		if not HITBOX_ON and not ESP_ON then return end
-		if tick() - lastUpdate < 0.5 then return end
+		if tick() - lastUpdate < 0.45 then return end
 		lastUpdate = tick()
 
 		for char in pairs(KnownNPCs) do
@@ -898,6 +975,41 @@ function loadLegacy()
 		aggroToggle.BackgroundColor3 = AGGRO_SOUND and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
 	end)
 
+	indicatorToggle.MouseButton1Click:Connect(function()
+		INDICATOR = not INDICATOR
+		indicatorToggle.Text = INDICATOR and "ON" or "OFF"
+		indicatorToggle.BackgroundColor3 = INDICATOR and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
+		if not INDICATOR then
+			for char in pairs(Indicators) do
+				clearIndicator(char)
+			end
+		end
+	end)
+
+	redSymbolToggle.MouseButton1Click:Connect(function()
+		RED_SYMBOL = not RED_SYMBOL
+		redSymbolToggle.Text = RED_SYMBOL and "ON" or "OFF"
+		redSymbolToggle.BackgroundColor3 = RED_SYMBOL and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
+		if not RED_SYMBOL then
+			for char, h in pairs(TempHighlights) do
+				if h and h.Parent then h:Destroy() end
+			end
+			TempHighlights = {}
+		end
+	end)
+
+	distBox.FocusLost:Connect(function()
+		local n = tonumber(distBox.Text)
+		if n then
+			n = math.clamp(n, 50, 2000)
+			maxDistance = n
+			distBox.Text = tostring(n)
+			refresh()
+		else
+			distBox.Text = tostring(maxDistance)
+		end
+	end)
+
 	headBox.FocusLost:Connect(function()
 		local n = tonumber(headBox.Text)
 		if n and n > 0 then headSize = n refresh() end
@@ -957,7 +1069,7 @@ function loadLegacy()
 	hGreen.MouseButton1Click:Connect(function() currentColor = Color3.fromRGB(40,220,80) refresh() end)
 	hPurple.MouseButton1Click:Connect(function() currentColor = Color3.fromRGB(180,40,255) refresh() end)
 
-	print("Legacy Full Version with 8s Highlight + Fixed Sound loaded")
+	print("Legacy Full - Red symbol toggle + Indicator only for you loaded")
 end
 
 print("Ready")

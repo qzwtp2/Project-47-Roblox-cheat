@@ -1,5 +1,11 @@
---// Legacy NPC - Full Version (Red symbol toggle + Indicator only for you)
+-- [LAUNCHER] Hitbox + Music Player Selector
 
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local lp = Players.LocalPlayer
+local pg = lp:WaitForChild("PlayerGui")
+
+local HITBOX_SCRIPT = [[
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -8,65 +14,42 @@ local SoundService = game:GetService("SoundService")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
-local HITBOX_ON = false
-local ESP_ON = false
-local MELEE_ON = false
-
-local THREAT_COLOR = true
+local NPC_HITBOX_ON = false
+local PLAYER_HITBOX_ON = false
+local NPC_MELEE_ON = false
+local PLAYER_MELEE_ON = false
+local NPC_THREAT_COLOR = true
+local PLAYER_THREAT_COLOR = true
 local AUTO_SIZE = false
 local REMOVE_ON_DEATH = true
 local DEATH_WHISPER = false
-local PULSE = false
+local HITBOX_PULSE = false
 local AGGRO_SOUND = false
+local ESP_ON = false
+local ESP_COLOR = Color3.fromRGB(0, 255, 0)
+local ESP_STYLE = "Faint"
 local INDICATOR = false
-local RED_SYMBOL = false          -- NEW - OFF by default
+local RED_SYMBOL = false
+local TEAM_CHECK = true
+local FRIEND_CHECK = true
 
 local headSize = 4
 local bodySize = 7
-local useHead = true
-local useBody = false
 local transparency = 0.55
-local currentColor = Color3.fromRGB(255, 40, 40)
-local fillTrans = 0.5
+local currentColor = Color3.fromRGB(0, 220, 255)
 local maxDistance = 300
 
-local Blacklist = {}
 local ModifiedParts = {}
 local KnownNPCs = {}
+local KnownPlayers = {}
 local ActiveHighlights = {}
-local TempHighlights = {}
-local Indicators = {}
-
 local lastSoundTime = 0
-local SOUND_COOLDOWN = 2.5
-local lastPlayerShot = 0          -- tracks when YOU last shot
-
-local Descriptions = {
-	["Head"] = "Expands only the NPC's head.",
-	["Body"] = "Expands the body / HumanoidRootPart.",
-	["Melee"] = "Expands almost every body part.",
-	["Threat Color"] = "Green (far) → Orange → Red (close).",
-	["Auto Size"] = "Hitbox gets bigger when NPC is closer.",
-	["Remove on Death"] = "Removes hitbox the moment NPC dies so bullets don't hit the corpse.",
-	["Death Whisper"] = "Shows a scary message when an NPC dies.",
-	["Hitbox Pulse"] = "Makes the hitbox flash when first applied.",
-	["Aggro Sound"] = "Only plays when an NPC damages YOU.",
-	["Indicator"] = "? = you shot them\n!!! = they damaged you\n(Only works for you)",
-	["Red symbol"] = "Temporary red highlight when NPC damages you. OFF by default."
-}
-
-local scaryMessages = {
-	"I'm always watching...",
-	"You can't hide from me...",
-	"I never left...",
-	"I'm right behind you...",
-	"Don't turn around...",
-	"You will never be alone..."
-}
+local SOUND_COOLDOWN = 2.6
+local pulseTime = 0
 
 local angrySound = Instance.new("Sound")
 angrySound.SoundId = "rbxassetid://17632035882"
-angrySound.Volume = 1.4
+angrySound.Volume = 0.6
 angrySound.Parent = SoundService
 
 local function playAggroSound()
@@ -76,1000 +59,711 @@ local function playAggroSound()
 	angrySound:Play()
 end
 
-local function clearIndicator(char)
-	if Indicators[char] then
-		Indicators[char]:Destroy()
-		Indicators[char] = nil
+local gui = Instance.new("ScreenGui")
+gui.Name = "FuturisticHitbox"
+gui.ResetOnSpawn = false
+gui.Parent = pg
+
+local eye = Instance.new("TextButton")
+eye.Size = UDim2.new(0, 48, 0, 48)
+eye.Position = UDim2.new(0, 14, 0.4, 0)
+eye.BackgroundColor3 = Color3.fromRGB(10, 12, 22)
+eye.Text = "👁️"
+eye.TextSize = 22
+eye.Font = Enum.Font.GothamBold
+eye.TextColor3 = Color3.fromRGB(0, 220, 255)
+eye.BorderSizePixel = 0
+eye.Parent = gui
+Instance.new("UICorner", eye).CornerRadius = UDim.new(1, 0)
+
+local eyeStroke = Instance.new("UIStroke")
+eyeStroke.Color = Color3.fromRGB(0, 200, 255)
+eyeStroke.Thickness = 1.8
+eyeStroke.Parent = eye
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 350, 0, 460)
+main.Position = UDim2.new(0.5, -175, 0.5, -230)
+main.BackgroundColor3 = Color3.fromRGB(8, 10, 18)
+main.BorderSizePixel = 0
+main.Visible = false
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(0, 180, 255)
+mainStroke.Thickness = 1.5
+mainStroke.Parent = main
+
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 40)
+titleBar.BackgroundColor3 = Color3.fromRGB(12, 15, 28)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = main
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 14)
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size = UDim2.new(1, -45, 1, 0)
+titleLbl.Position = UDim2.new(0, 14, 0, 0)
+titleLbl.BackgroundTransparency = 1
+titleLbl.Text = "HITBOX NPC + PLAYER"
+titleLbl.Font = Enum.Font.GothamBold
+titleLbl.TextSize = 15
+titleLbl.TextColor3 = Color3.fromRGB(0, 220, 255)
+titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+titleLbl.Parent = titleBar
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 32, 0, 32)
+closeBtn.Position = UDim2.new(1, -38, 0, 4)
+closeBtn.BackgroundColor3 = Color3.fromRGB(30, 35, 55)
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 14
+closeBtn.TextColor3 = Color3.new(1,1,1)
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = titleBar
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
+
+local side = Instance.new("Frame")
+side.Size = UDim2.new(0, 95, 1, -50)
+side.Position = UDim2.new(0, 8, 0, 45)
+side.BackgroundColor3 = Color3.fromRGB(12, 14, 25)
+side.BorderSizePixel = 0
+side.Parent = main
+Instance.new("UICorner", side).CornerRadius = UDim.new(0, 10)
+
+local function makeTab(name, y)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1, -10, 0, 34)
+	b.Position = UDim2.new(0, 5, 0, y)
+	b.BackgroundColor3 = Color3.fromRGB(20, 25, 40)
+	b.Text = name
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 12
+	b.TextColor3 = Color3.fromRGB(180, 200, 255)
+	b.BorderSizePixel = 0
+	b.Parent = side
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+	return b
+end
+
+local hitboxTab = makeTab("Hitbox", 8)
+local espTab    = makeTab("ESP", 50)
+local moreTab   = makeTab("More", 92)
+local colorTab  = makeTab("Color", 134)
+local playerTab = makeTab("Player Hitbox", 176)
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -115, 1, -55)
+content.Position = UDim2.new(0, 110, 0, 50)
+content.BackgroundTransparency = 1
+content.Parent = main
+
+local hitboxPage = Instance.new("ScrollingFrame")
+hitboxPage.Size = UDim2.new(1,0,1,0)
+hitboxPage.BackgroundTransparency = 1
+hitboxPage.ScrollBarThickness = 3
+hitboxPage.CanvasSize = UDim2.new(0,0,0,560)
+hitboxPage.Parent = content
+
+local espPage = Instance.new("Frame")
+espPage.Size = UDim2.new(1,0,1,0)
+espPage.BackgroundTransparency = 1
+espPage.Visible = false
+espPage.Parent = content
+
+local morePage = Instance.new("ScrollingFrame")
+morePage.Size = UDim2.new(1,0,1,0)
+morePage.BackgroundTransparency = 1
+morePage.ScrollBarThickness = 3
+morePage.CanvasSize = UDim2.new(0,0,0,300)
+morePage.Visible = false
+morePage.Parent = content
+
+local colorPage = Instance.new("Frame")
+colorPage.Size = UDim2.new(1,0,1,0)
+colorPage.BackgroundTransparency = 1
+colorPage.Visible = false
+colorPage.Parent = content
+
+local playerPage = Instance.new("ScrollingFrame")
+playerPage.Size = UDim2.new(1,0,1,0)
+playerPage.BackgroundTransparency = 1
+playerPage.ScrollBarThickness = 3
+playerPage.CanvasSize = UDim2.new(0,0,0,520)
+playerPage.Visible = false
+playerPage.Parent = content
+
+local function switch(page)
+	hitboxPage.Visible = false
+	espPage.Visible    = false
+	morePage.Visible   = false
+	colorPage.Visible  = false
+	playerPage.Visible = false
+	page.Visible = true
+end
+
+hitboxTab.MouseButton1Click:Connect(function() switch(hitboxPage) end)
+espTab.MouseButton1Click:Connect(function()    switch(espPage)    end)
+moreTab.MouseButton1Click:Connect(function()   switch(morePage)   end)
+colorTab.MouseButton1Click:Connect(function()  switch(colorPage)  end)
+playerTab.MouseButton1Click:Connect(function() switch(playerPage) end)
+
+eye.MouseButton1Click:Connect(function() main.Visible = not main.Visible end)
+closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
+
+local function makeDraggable(handle, panel)
+	local dragging, start, pos
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			start = input.Position
+			pos   = panel.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - start
+			panel.Position = UDim2.new(pos.X.Scale, pos.X.Offset+delta.X, pos.Y.Scale, pos.Y.Offset+delta.Y)
+		end
+	end)
+end
+makeDraggable(titleBar, main)
+makeDraggable(eye, eye)
+
+local function label(text, y, parent)
+	local l = Instance.new("TextLabel")
+	l.Size = UDim2.new(1,-120,0,18)
+	l.Position = UDim2.new(0,5,0,y)
+	l.BackgroundTransparency = 1
+	l.Text = text
+	l.Font = Enum.Font.GothamBold
+	l.TextSize = 12
+	l.TextColor3 = Color3.fromRGB(160,200,255)
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.Parent = parent
+	local q = Instance.new("TextButton")
+	q.Size = UDim2.new(0,18,0,18)
+	q.Position = UDim2.new(1,-118,0,y)
+	q.BackgroundColor3 = Color3.fromRGB(50,55,75)
+	q.Text = "?"
+	q.Font = Enum.Font.GothamBold
+	q.TextSize = 11
+	q.TextColor3 = Color3.fromRGB(160,170,200)
+	q.BorderSizePixel = 0
+	q.Parent = parent
+	Instance.new("UICorner",q).CornerRadius = UDim.new(1,0)
+	return l, q
+end
+
+local function makeToggle(name, y, parent, default)
+	label(name, y, parent)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0,52,0,24)
+	btn.Position = UDim2.new(1,-57,0,y)
+	btn.BackgroundColor3 = default and Color3.fromRGB(0,160,200) or Color3.fromRGB(40,45,60)
+	btn.Text = default and "ON" or "OFF"
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 11
+	btn.TextColor3 = Color3.new(1,1,1)
+	btn.BorderSizePixel = 0
+	btn.Parent = parent
+	Instance.new("UICorner",btn).CornerRadius = UDim.new(0,6)
+	return btn
+end
+
+local function makeSizeBox(name, y, parent, defaultVal)
+	label(name, y, parent)
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(0,52,0,24)
+	box.Position = UDim2.new(1,-57,0,y)
+	box.BackgroundColor3 = Color3.fromRGB(20,25,40)
+	box.Text = defaultVal
+	box.Font = Enum.Font.Gotham
+	box.TextSize = 13
+	box.TextColor3 = Color3.new(1,1,1)
+	box.BorderSizePixel = 0
+	box.Parent = parent
+	Instance.new("UICorner",box).CornerRadius = UDim.new(0,6)
+	return box
+end
+
+local function makeColorBtn(name, color, x, y, parent)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0,70,0,30)
+	b.Position = UDim2.new(0,x,0,y)
+	b.BackgroundColor3 = color
+	b.Text = name
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 12
+	b.TextColor3 = Color3.new(1,1,1)
+	b.BorderSizePixel = 0
+	b.Parent = parent
+	Instance.new("UICorner",b).CornerRadius = UDim.new(0,6)
+	return b
+end
+
+local headToggle        = makeToggle("Head",            8,   hitboxPage, true)
+local bodyToggle        = makeToggle("Body",            40,  hitboxPage, false)
+local meleeToggle       = makeToggle("Melee",           72,  hitboxPage, false)
+local threatToggle      = makeToggle("Threat Color",    104, hitboxPage, true)
+local autoSizeToggle    = makeToggle("Auto Size",       136, hitboxPage, false)
+local removeDeathToggle = makeToggle("Remove on Death", 168, hitboxPage, true)
+local deathWhisperToggle= makeToggle("Death Whisper",   200, hitboxPage, false)
+local pulseToggle       = makeToggle("Hitbox Pulse",    232, hitboxPage, false)
+local aggroToggle       = makeToggle("Aggro Sound",     264, hitboxPage, false)
+local headBox           = makeSizeBox("Head Size",      306, hitboxPage, "4")
+local bodyBox           = makeSizeBox("Body Size",      348, hitboxPage, "7")
+local transBox          = makeSizeBox("Transparency",   390, hitboxPage, "0.55")
+
+local npcStatus = Instance.new("TextButton")
+npcStatus.Size = UDim2.new(0,160,0,34)
+npcStatus.Position = UDim2.new(0.5,-80,0,440)
+npcStatus.BackgroundColor3 = Color3.fromRGB(30,40,60)
+npcStatus.Text = "NPC Hitbox: OFF"
+npcStatus.Font = Enum.Font.GothamBold
+npcStatus.TextSize = 13
+npcStatus.TextColor3 = Color3.new(1,1,1)
+npcStatus.BorderSizePixel = 0
+npcStatus.Parent = hitboxPage
+Instance.new("UICorner",npcStatus).CornerRadius = UDim.new(0,8)
+
+local espTitle = Instance.new("TextLabel")
+espTitle.Size = UDim2.new(1,0,0,22)
+espTitle.Position = UDim2.new(0,4,0,8)
+espTitle.BackgroundTransparency = 1
+espTitle.Text = "ESP Colors"
+espTitle.Font = Enum.Font.GothamBold
+espTitle.TextSize = 13
+espTitle.TextColor3 = Color3.fromRGB(160,200,255)
+espTitle.TextXAlignment = Enum.TextXAlignment.Left
+espTitle.Parent = espPage
+
+local redESP   = makeColorBtn("Red",   Color3.fromRGB(230,60,60),  4,   36, espPage)
+local blueESP  = makeColorBtn("Blue",  Color3.fromRGB(60,130,255), 82,  36, espPage)
+local greenESP = makeColorBtn("Green", Color3.fromRGB(60,210,100), 160, 36, espPage)
+
+local espStyleTitle = Instance.new("TextLabel")
+espStyleTitle.Size = UDim2.new(1,0,0,22)
+espStyleTitle.Position = UDim2.new(0,4,0,80)
+espStyleTitle.BackgroundTransparency = 1
+espStyleTitle.Text = "ESP Style"
+espStyleTitle.Font = Enum.Font.GothamBold
+espStyleTitle.TextSize = 13
+espStyleTitle.TextColor3 = Color3.fromRGB(160,200,255)
+espStyleTitle.TextXAlignment = Enum.TextXAlignment.Left
+espStyleTitle.Parent = espPage
+
+local solidBtn = makeColorBtn("Solid", Color3.fromRGB(70,70,90),  4,  108, espPage)
+local faintBtn = makeColorBtn("Faint", Color3.fromRGB(0,180,100), 82, 108, espPage)
+
+local espStatus = Instance.new("TextButton")
+espStatus.Size = UDim2.new(0,160,0,34)
+espStatus.Position = UDim2.new(0.5,-80,0,160)
+espStatus.BackgroundColor3 = Color3.fromRGB(30,40,60)
+espStatus.Text = "ESP: OFF"
+espStatus.Font = Enum.Font.GothamBold
+espStatus.TextSize = 13
+espStatus.TextColor3 = Color3.new(1,1,1)
+espStatus.BorderSizePixel = 0
+espStatus.Parent = espPage
+Instance.new("UICorner",espStatus).CornerRadius = UDim.new(0,8)
+
+label("Max Distance Cap", 8, morePage)
+local capNote = Instance.new("TextLabel")
+capNote.Size = UDim2.new(1,-60,0,16)
+capNote.Position = UDim2.new(0,5,0,26)
+capNote.BackgroundTransparency = 1
+capNote.Text = "(Default 300 | Max 2000)"
+capNote.Font = Enum.Font.Gotham
+capNote.TextSize = 10
+capNote.TextColor3 = Color3.fromRGB(130,140,170)
+capNote.TextXAlignment = Enum.TextXAlignment.Left
+capNote.Parent = morePage
+
+local distBox = Instance.new("TextBox")
+distBox.Size = UDim2.new(0,90,0,28)
+distBox.Position = UDim2.new(0,5,0,48)
+distBox.BackgroundColor3 = Color3.fromRGB(20,25,40)
+distBox.Text = "300"
+distBox.Font = Enum.Font.GothamBold
+distBox.TextSize = 14
+distBox.TextColor3 = Color3.new(1,1,1)
+distBox.BorderSizePixel = 0
+distBox.Parent = morePage
+Instance.new("UICorner",distBox).CornerRadius = UDim.new(0,6)
+
+local indicatorToggle = makeToggle("Indicator",  100, morePage, false)
+local redSymbolToggle = makeToggle("Red Symbol", 140, morePage, false)
+
+local note1 = Instance.new("TextLabel")
+note1.Size = UDim2.new(1,-8,0,30)
+note1.Position = UDim2.new(0,5,0,190)
+note1.BackgroundTransparency = 1
+note1.Text = "Indicator only works for YOU.\nRed symbol = temporary red glow (off by default)."
+note1.Font = Enum.Font.Gotham
+note1.TextSize = 10
+note1.TextColor3 = Color3.fromRGB(130,140,170)
+note1.TextXAlignment = Enum.TextXAlignment.Left
+note1.TextWrapped = true
+note1.Parent = morePage
+
+local hitboxColorTitle = Instance.new("TextLabel")
+hitboxColorTitle.Size = UDim2.new(1,0,0,22)
+hitboxColorTitle.Position = UDim2.new(0,4,0,8)
+hitboxColorTitle.BackgroundTransparency = 1
+hitboxColorTitle.Text = "Hitbox Color"
+hitboxColorTitle.Font = Enum.Font.GothamBold
+hitboxColorTitle.TextSize = 13
+hitboxColorTitle.TextColor3 = Color3.fromRGB(160,200,255)
+hitboxColorTitle.TextXAlignment = Enum.TextXAlignment.Left
+hitboxColorTitle.Parent = colorPage
+
+local redHit    = makeColorBtn("Red",    Color3.fromRGB(230,60,60),  4,   36, colorPage)
+local blueHit   = makeColorBtn("Blue",   Color3.fromRGB(60,130,255), 82,  36, colorPage)
+local greenHit  = makeColorBtn("Green",  Color3.fromRGB(60,210,100), 160, 36, colorPage)
+local purpleHit = makeColorBtn("Purple", Color3.fromRGB(170,80,255), 4,   76, colorPage)
+
+local pHeadToggle        = makeToggle("Head",            8,   playerPage, true)
+local pBodyToggle        = makeToggle("Body",            40,  playerPage, false)
+local pMeleeToggle       = makeToggle("Melee",           72,  playerPage, false)
+local pThreatToggle      = makeToggle("Threat Color",    104, playerPage, true)
+local pAutoSizeToggle    = makeToggle("Auto Size",       136, playerPage, false)
+local pRemoveDeathToggle = makeToggle("Remove on Death", 168, playerPage, true)
+local pTeamToggle        = makeToggle("Team Check",      200, playerPage, true)
+local pFriendToggle      = makeToggle("Friend Check",    232, playerPage, true)
+local pHeadBox           = makeSizeBox("Head Size",      274, playerPage, "4")
+local pBodyBox           = makeSizeBox("Body Size",      316, playerPage, "7")
+local pTransBox          = makeSizeBox("Transparency",   358, playerPage, "0.55")
+
+local playerStatus = Instance.new("TextButton")
+playerStatus.Size = UDim2.new(0,160,0,34)
+playerStatus.Position = UDim2.new(0.5,-80,0,410)
+playerStatus.BackgroundColor3 = Color3.fromRGB(30,40,60)
+playerStatus.Text = "Player Hitbox: OFF"
+playerStatus.Font = Enum.Font.GothamBold
+playerStatus.TextSize = 13
+playerStatus.TextColor3 = Color3.new(1,1,1)
+playerStatus.BorderSizePixel = 0
+playerStatus.Parent = playerPage
+Instance.new("UICorner",playerStatus).CornerRadius = UDim.new(0,8)
+
+local function isNPC(model)
+	if not model or not model:IsA("Model") then return false end
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if not hum then return false end
+	return Players:GetPlayerFromCharacter(model) == nil
+end
+
+local function getDistance(char)
+	local myRoot = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character:FindFirstChild("Torso"))
+	local otherRoot = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+	if myRoot and otherRoot then return (myRoot.Position - otherRoot.Position).Magnitude end
+	return 9999
+end
+
+local function isFriend(plr)
+	local ok, res = pcall(function() return lp:IsFriendsWith(plr.UserId) end)
+	return ok and res
+end
+
+local function savePart(part)
+	if part and not ModifiedParts[part] then
+		ModifiedParts[part] = {Size=part.Size,Transparency=part.Transparency,Color=part.Color,Material=part.Material,CanCollide=part.CanCollide}
 	end
 end
 
-local function setIndicator(char, text, color)
-	if not INDICATOR or not char or not char.Parent then return end
-	clearIndicator(char)
-
-	local root = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
-	if not root then return end
-
-	local bill = Instance.new("BillboardGui")
-	bill.Name = "NPCIndicator"
-	bill.Size = UDim2.new(0, 60, 0, 40)
-	bill.StudsOffset = Vector3.new(0, 3.2, 0)
-	bill.AlwaysOnTop = true
-	bill.Adornee = root
-	bill.Parent = char
-
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Text = text
-	label.TextColor3 = color or Color3.fromRGB(255, 255, 100)
-	label.TextStrokeTransparency = 0.3
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 22
-	label.Parent = bill
-
-	Indicators[char] = bill
+local function restorePart(part)
+	local data = ModifiedParts[part]
+	if data and part and part.Parent then
+		pcall(function()
+			part.Size=data.Size part.Transparency=data.Transparency part.Color=data.Color part.Material=data.Material part.CanCollide=data.CanCollide
+		end)
+		ModifiedParts[part] = nil
+	end
 end
 
-local function tempHighlight(char)
-	if not RED_SYMBOL then return end          -- only if Red symbol is ON
-	if not char or not char.Parent then return end
-	if TempHighlights[char] then return end
-
-	local h = Instance.new("Highlight")
-	h.Name = "TempAggroHighlight"
-	h.Adornee = char
-	h.FillColor = Color3.fromRGB(255, 40, 40)
-	h.FillTransparency = 0.25
-	h.OutlineColor = Color3.fromRGB(255, 0, 0)
-	h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	h.Parent = char
-
-	TempHighlights[char] = h
-
-	task.delay(8, function()
-		if h and h.Parent then h:Destroy() end
-		TempHighlights[char] = nil
-	end)
+local function restoreAll()
+	for part in pairs(ModifiedParts) do restorePart(part) end
+	ModifiedParts = {}
 end
 
--- Track when YOU shoot (for Indicator ?)
-UIS.InputBegan:Connect(function(input, gpe)
-	if gpe then return end
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		lastPlayerShot = tick()
+local function clearESP()
+	for char,h in pairs(ActiveHighlights) do if h and h.Parent then h:Destroy() end end
+	ActiveHighlights = {}
+end
+
+local function applyHitbox(char, isPlayer, useHead, useBody, hSize, bSize, trans, meleeOn, threatOn)
+	local dist = getDistance(char)
+	if dist > maxDistance then return end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return end
+	local finalColor = currentColor
+	if threatOn then
+		if dist <= 18 then finalColor = Color3.fromRGB(255,40,40)
+		elseif dist <= 40 then finalColor = Color3.fromRGB(255,160,40)
+		else finalColor = Color3.fromRGB(40,220,100) end
+	end
+	local sizeMult = 1
+	if AUTO_SIZE then sizeMult = math.clamp(1.3-(dist/160),0.7,1.3) end
+	if HITBOX_PULSE then pulseTime=pulseTime+0.05 sizeMult=sizeMult*(1+0.15*math.sin(pulseTime*4)) end
+	local head = char:FindFirstChild("Head")
+	local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+	if useHead and head then
+		savePart(head)
+		head.Size=Vector3.new(hSize*sizeMult,hSize*sizeMult,hSize*sizeMult)
+		head.Material=Enum.Material.Neon head.Color=finalColor head.Transparency=trans head.CanCollide=false
+	end
+	if useBody and hrp then
+		savePart(hrp)
+		hrp.Size=Vector3.new(bSize*sizeMult,bSize*sizeMult,bSize*sizeMult)
+		hrp.Material=Enum.Material.Neon hrp.Color=finalColor hrp.Transparency=trans hrp.CanCollide=false
+	end
+	if meleeOn then
+		for _,part in pairs(char:GetDescendants()) do
+			if part:IsA("BasePart") then
+				savePart(part) part.Size=Vector3.new(5*sizeMult,5*sizeMult,5*sizeMult) part.Transparency=trans part.CanCollide=false
+			end
+		end
+	end
+	if RED_SYMBOL and dist<=18 and head then head.Color=Color3.fromRGB(255,30,30) end
+	if INDICATOR and dist<=25 then playAggroSound() end
+end
+
+local function applyESP(char)
+	if not isNPC(char) then return end
+	local dist = getDistance(char)
+	if dist > maxDistance then return end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health<=0 then return end
+	local h = ActiveHighlights[char]
+	if not h or not h.Parent then
+		h = Instance.new("Highlight")
+		h.Adornee=char h.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop h.Parent=char
+		ActiveHighlights[char]=h
+	end
+	h.FillColor=ESP_COLOR
+	if ESP_STYLE=="Faint" then h.FillTransparency=0.7 h.OutlineTransparency=0.3
+	else h.FillTransparency=0.4 h.OutlineTransparency=0 end
+	h.Enabled=true
+end
+
+local function registerNPC(char)
+	if KnownNPCs[char] then return end
+	if not isNPC(char) then return end
+	KnownNPCs[char]=true
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.Died:Connect(function()
+			if REMOVE_ON_DEATH then
+				for _,part in pairs(char:GetDescendants()) do if part:IsA("BasePart") then restorePart(part) end end
+			end
+			if DEATH_WHISPER then playAggroSound() end
+			local h=ActiveHighlights[char] if h then h:Destroy() ActiveHighlights[char]=nil end
+			KnownNPCs[char]=nil
+		end)
+	end
+end
+
+for _,obj in pairs(Workspace:GetDescendants()) do if obj:IsA("Model") and isNPC(obj) then registerNPC(obj) end end
+Workspace.DescendantAdded:Connect(function(obj)
+	if obj:IsA("Humanoid") and obj.Parent then task.defer(function() registerNPC(obj.Parent) end) end
+end)
+
+local function registerPlayer(plr)
+	if plr==lp then return end
+	KnownPlayers[plr]=true
+end
+for _,plr in pairs(Players:GetPlayers()) do registerPlayer(plr) end
+Players.PlayerAdded:Connect(registerPlayer)
+Players.PlayerRemoving:Connect(function(plr) KnownPlayers[plr]=nil end)
+
+local useHead, useBody = true, false
+local pUseHead, pUseBody = true, false
+local pHeadSize, pBodySize, pTransparency = 4, 7, 0.55
+
+local lastUpdate = 0
+RunService.Heartbeat:Connect(function()
+	if tick()-lastUpdate<0.3 then return end
+	lastUpdate=tick()
+	if NPC_HITBOX_ON then
+		for char in pairs(KnownNPCs) do
+			if char and char.Parent then
+				applyHitbox(char,false,useHead,useBody,headSize,bodySize,transparency,NPC_MELEE_ON,NPC_THREAT_COLOR)
+			else KnownNPCs[char]=nil end
+		end
+	end
+	if PLAYER_HITBOX_ON then
+		for plr in pairs(KnownPlayers) do
+			if plr and plr.Character then
+				local skip=false
+				if TEAM_CHECK and lp.Team and plr.Team and lp.Team==plr.Team then skip=true end
+				if FRIEND_CHECK and isFriend(plr) then skip=true end
+				if not skip then
+					applyHitbox(plr.Character,true,pUseHead,pUseBody,pHeadSize,pBodySize,pTransparency,PLAYER_MELEE_ON,PLAYER_THREAT_COLOR)
+				end
+			end
+		end
+	end
+	if ESP_ON then
+		for char in pairs(KnownNPCs) do
+			if char and char.Parent then applyESP(char) else KnownNPCs[char]=nil end
+		end
 	end
 end)
 
--- Launcher
-local launcher = Instance.new("ScreenGui")
-launcher.Name = "Launcher"
-launcher.ResetOnSpawn = false
-launcher.Parent = pg
+headToggle.MouseButton1Click:Connect(function() useHead=not useHead headToggle.Text=useHead and"ON"or"OFF" headToggle.BackgroundColor3=useHead and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+bodyToggle.MouseButton1Click:Connect(function() useBody=not useBody bodyToggle.Text=useBody and"ON"or"OFF" bodyToggle.BackgroundColor3=useBody and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+meleeToggle.MouseButton1Click:Connect(function() NPC_MELEE_ON=not NPC_MELEE_ON meleeToggle.Text=NPC_MELEE_ON and"ON"or"OFF" meleeToggle.BackgroundColor3=NPC_MELEE_ON and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+threatToggle.MouseButton1Click:Connect(function() NPC_THREAT_COLOR=not NPC_THREAT_COLOR threatToggle.Text=NPC_THREAT_COLOR and"ON"or"OFF" threatToggle.BackgroundColor3=NPC_THREAT_COLOR and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+autoSizeToggle.MouseButton1Click:Connect(function() AUTO_SIZE=not AUTO_SIZE autoSizeToggle.Text=AUTO_SIZE and"ON"or"OFF" autoSizeToggle.BackgroundColor3=AUTO_SIZE and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+removeDeathToggle.MouseButton1Click:Connect(function() REMOVE_ON_DEATH=not REMOVE_ON_DEATH removeDeathToggle.Text=REMOVE_ON_DEATH and"ON"or"OFF" removeDeathToggle.BackgroundColor3=REMOVE_ON_DEATH and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+deathWhisperToggle.MouseButton1Click:Connect(function() DEATH_WHISPER=not DEATH_WHISPER deathWhisperToggle.Text=DEATH_WHISPER and"ON"or"OFF" deathWhisperToggle.BackgroundColor3=DEATH_WHISPER and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+pulseToggle.MouseButton1Click:Connect(function() HITBOX_PULSE=not HITBOX_PULSE pulseToggle.Text=HITBOX_PULSE and"ON"or"OFF" pulseToggle.BackgroundColor3=HITBOX_PULSE and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+aggroToggle.MouseButton1Click:Connect(function() AGGRO_SOUND=not AGGRO_SOUND aggroToggle.Text=AGGRO_SOUND and"ON"or"OFF" aggroToggle.BackgroundColor3=AGGRO_SOUND and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+npcStatus.MouseButton1Click:Connect(function() NPC_HITBOX_ON=not NPC_HITBOX_ON npcStatus.Text=NPC_HITBOX_ON and"NPC Hitbox: ON"or"NPC Hitbox: OFF" npcStatus.BackgroundColor3=NPC_HITBOX_ON and Color3.fromRGB(0,160,200)or Color3.fromRGB(30,40,60) if not NPC_HITBOX_ON then restoreAll() end end)
+headBox.FocusLost:Connect(function() local n=tonumber(headBox.Text) if n and n>0 then headSize=n end end)
+bodyBox.FocusLost:Connect(function() local n=tonumber(bodyBox.Text) if n and n>0 then bodySize=n end end)
+transBox.FocusLost:Connect(function() local n=tonumber(transBox.Text) if n and n>=0 and n<=1 then transparency=n end end)
+redESP.MouseButton1Click:Connect(function() ESP_COLOR=Color3.fromRGB(230,60,60) end)
+blueESP.MouseButton1Click:Connect(function() ESP_COLOR=Color3.fromRGB(60,130,255) end)
+greenESP.MouseButton1Click:Connect(function() ESP_COLOR=Color3.fromRGB(60,210,100) end)
+solidBtn.MouseButton1Click:Connect(function() ESP_STYLE="Solid" end)
+faintBtn.MouseButton1Click:Connect(function() ESP_STYLE="Faint" end)
+espStatus.MouseButton1Click:Connect(function() ESP_ON=not ESP_ON espStatus.Text=ESP_ON and"ESP: ON"or"ESP: OFF" espStatus.BackgroundColor3=ESP_ON and Color3.fromRGB(0,160,200)or Color3.fromRGB(30,40,60) if not ESP_ON then clearESP() end end)
+distBox.FocusLost:Connect(function() local n=tonumber(distBox.Text) if n then maxDistance=math.clamp(n,50,2000) distBox.Text=tostring(maxDistance) end end)
+indicatorToggle.MouseButton1Click:Connect(function() INDICATOR=not INDICATOR indicatorToggle.Text=INDICATOR and"ON"or"OFF" indicatorToggle.BackgroundColor3=INDICATOR and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+redSymbolToggle.MouseButton1Click:Connect(function() RED_SYMBOL=not RED_SYMBOL redSymbolToggle.Text=RED_SYMBOL and"ON"or"OFF" redSymbolToggle.BackgroundColor3=RED_SYMBOL and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+redHit.MouseButton1Click:Connect(function() currentColor=Color3.fromRGB(230,60,60) end)
+blueHit.MouseButton1Click:Connect(function() currentColor=Color3.fromRGB(60,130,255) end)
+greenHit.MouseButton1Click:Connect(function() currentColor=Color3.fromRGB(60,210,100) end)
+purpleHit.MouseButton1Click:Connect(function() currentColor=Color3.fromRGB(170,80,255) end)
+pHeadToggle.MouseButton1Click:Connect(function() pUseHead=not pUseHead pHeadToggle.Text=pUseHead and"ON"or"OFF" pHeadToggle.BackgroundColor3=pUseHead and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+pBodyToggle.MouseButton1Click:Connect(function() pUseBody=not pUseBody pBodyToggle.Text=pUseBody and"ON"or"OFF" pBodyToggle.BackgroundColor3=pUseBody and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+pMeleeToggle.MouseButton1Click:Connect(function() PLAYER_MELEE_ON=not PLAYER_MELEE_ON pMeleeToggle.Text=PLAYER_MELEE_ON and"ON"or"OFF" pMeleeToggle.BackgroundColor3=PLAYER_MELEE_ON and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+pThreatToggle.MouseButton1Click:Connect(function() PLAYER_THREAT_COLOR=not PLAYER_THREAT_COLOR pThreatToggle.Text=PLAYER_THREAT_COLOR and"ON"or"OFF" pThreatToggle.BackgroundColor3=PLAYER_THREAT_COLOR and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+pAutoSizeToggle.MouseButton1Click:Connect(function() AUTO_SIZE=not AUTO_SIZE pAutoSizeToggle.Text=AUTO_SIZE and"ON"or"OFF" pAutoSizeToggle.BackgroundColor3=AUTO_SIZE and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+pRemoveDeathToggle.MouseButton1Click:Connect(function() REMOVE_ON_DEATH=not REMOVE_ON_DEATH pRemoveDeathToggle.Text=REMOVE_ON_DEATH and"ON"or"OFF" pRemoveDeathToggle.BackgroundColor3=REMOVE_ON_DEATH and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+pTeamToggle.MouseButton1Click:Connect(function() TEAM_CHECK=not TEAM_CHECK pTeamToggle.Text=TEAM_CHECK and"ON"or"OFF" pTeamToggle.BackgroundColor3=TEAM_CHECK and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+pFriendToggle.MouseButton1Click:Connect(function() FRIEND_CHECK=not FRIEND_CHECK pFriendToggle.Text=FRIEND_CHECK and"ON"or"OFF" pFriendToggle.BackgroundColor3=FRIEND_CHECK and Color3.fromRGB(0,160,200)or Color3.fromRGB(40,45,60) end)
+playerStatus.MouseButton1Click:Connect(function() PLAYER_HITBOX_ON=not PLAYER_HITBOX_ON playerStatus.Text=PLAYER_HITBOX_ON and"Player Hitbox: ON"or"Player Hitbox: OFF" playerStatus.BackgroundColor3=PLAYER_HITBOX_ON and Color3.fromRGB(0,160,200)or Color3.fromRGB(30,40,60) if not PLAYER_HITBOX_ON then restoreAll() end end)
+pHeadBox.FocusLost:Connect(function() local n=tonumber(pHeadBox.Text) if n and n>0 then pHeadSize=n end end)
+pBodyBox.FocusLost:Connect(function() local n=tonumber(pBodyBox.Text) if n and n>0 then pBodySize=n end end)
+pTransBox.FocusLost:Connect(function() local n=tonumber(pTransBox.Text) if n and n>=0 and n<=1 then pTransparency=n end end)
 
-local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 230, 0, 145)
-frame.Position = UDim2.new(0.5, -115, 0.5, -72)
-frame.BackgroundColor3 = Color3.fromRGB(16,16,22)
-frame.BorderSizePixel = 0
-frame.Parent = launcher
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+print("Futuristic Hitbox + Player Hitbox loaded")
+]]
 
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1,0,0,35)
-title.BackgroundColor3 = Color3.fromRGB(24,24,32)
-title.Text = "Choose Version"
-title.Font = Enum.Font.GothamBold
-title.TextSize = 14
-title.TextColor3 = Color3.fromRGB(180,160,255)
-title.BorderSizePixel = 0
-title.Parent = frame
-Instance.new("UICorner", title).CornerRadius = UDim.new(0, 10)
+local MUSIC_SCRIPT = [[loadstring(game:HttpGet("https://raw.githubusercontent.com/HaTapLamScript/MAMBO-PROJECT/refs/heads/main/Script/UNIVERSAL/Youtube_player.lua"))()]]
 
-local normalBtn = Instance.new("TextButton")
-normalBtn.Size = UDim2.new(0, 190, 0, 35)
-normalBtn.Position = UDim2.new(0, 20, 0, 48)
-normalBtn.BackgroundColor3 = Color3.fromRGB(0,130,60)
-normalBtn.Text = "Normal Hitbox NPC"
-normalBtn.Font = Enum.Font.GothamBold
-normalBtn.TextSize = 13
-normalBtn.TextColor3 = Color3.new(1,1,1)
-normalBtn.BorderSizePixel = 0
-normalBtn.Parent = frame
-Instance.new("UICorner", normalBtn).CornerRadius = UDim.new(0, 8)
+-- ===================== LAUNCHER GUI =====================
+local launcherGui = Instance.new("ScreenGui")
+launcherGui.Name = "HitboxLauncher"
+launcherGui.ResetOnSpawn = false
+launcherGui.Parent = pg
 
-local musicBtn = Instance.new("TextButton")
-musicBtn.Size = UDim2.new(0, 190, 0, 35)
-musicBtn.Position = UDim2.new(0, 20, 0, 95)
-musicBtn.BackgroundColor3 = Color3.fromRGB(0,90,170)
-musicBtn.Text = "Music + Hitbox NPC"
-musicBtn.Font = Enum.Font.GothamBold
-musicBtn.TextSize = 13
-musicBtn.TextColor3 = Color3.new(1,1,1)
-musicBtn.BorderSizePixel = 0
-musicBtn.Parent = frame
-Instance.new("UICorner", musicBtn).CornerRadius = UDim.new(0, 8)
+local box = Instance.new("Frame")
+box.Size = UDim2.new(0, 280, 0, 160)
+box.Position = UDim2.new(0.5, -140, 0.5, -80)
+box.BackgroundColor3 = Color3.fromRGB(8, 10, 18)
+box.BorderSizePixel = 0
+box.Parent = launcherGui
+Instance.new("UICorner", box).CornerRadius = UDim.new(0, 14)
 
-local function start(music)
-	launcher:Destroy()
-	if music then
-		pcall(function()
-			loadstring(game:HttpGet("https://raw.githubusercontent.com/HaTapLamScript/MAMBO-PROJECT/refs/heads/main/Script/UNIVERSAL/Youtube_player.lua"))()
-		end)
+local boxStroke = Instance.new("UIStroke")
+boxStroke.Color = Color3.fromRGB(0, 180, 255)
+boxStroke.Thickness = 1.5
+boxStroke.Parent = box
+
+local boxTitle = Instance.new("TextLabel")
+boxTitle.Size = UDim2.new(1, 0, 0, 36)
+boxTitle.Position = UDim2.new(0, 0, 0, 0)
+boxTitle.BackgroundColor3 = Color3.fromRGB(12, 15, 28)
+boxTitle.BorderSizePixel = 0
+boxTitle.Text = "SELECT MODE"
+boxTitle.Font = Enum.Font.GothamBold
+boxTitle.TextSize = 14
+boxTitle.TextColor3 = Color3.fromRGB(0, 220, 255)
+boxTitle.Parent = box
+Instance.new("UICorner", boxTitle).CornerRadius = UDim.new(0, 14)
+
+-- GREEN — hitbox only, no music
+local greenBtn = Instance.new("TextButton")
+greenBtn.Size = UDim2.new(1, -24, 0, 44)
+greenBtn.Position = UDim2.new(0, 12, 0, 48)
+greenBtn.BackgroundColor3 = Color3.fromRGB(30, 160, 80)
+greenBtn.Text = "▶  Normal Zero Music Hitbox"
+greenBtn.Font = Enum.Font.GothamBold
+greenBtn.TextSize = 13
+greenBtn.TextColor3 = Color3.new(1, 1, 1)
+greenBtn.BorderSizePixel = 0
+greenBtn.Parent = box
+Instance.new("UICorner", greenBtn).CornerRadius = UDim.new(0, 9)
+
+local greenStroke = Instance.new("UIStroke")
+greenStroke.Color = Color3.fromRGB(60, 220, 120)
+greenStroke.Thickness = 1.2
+greenStroke.Parent = greenBtn
+
+-- BLUE — hitbox + music player
+local blueBtn = Instance.new("TextButton")
+blueBtn.Size = UDim2.new(1, -24, 0, 44)
+blueBtn.Position = UDim2.new(0, 12, 0, 102)
+blueBtn.BackgroundColor3 = Color3.fromRGB(30, 100, 210)
+blueBtn.Text = "▶  Music Player Hitbox"
+blueBtn.Font = Enum.Font.GothamBold
+blueBtn.TextSize = 13
+blueBtn.TextColor3 = Color3.new(1, 1, 1)
+blueBtn.BorderSizePixel = 0
+blueBtn.Parent = box
+Instance.new("UICorner", blueBtn).CornerRadius = UDim.new(0, 9)
+
+local blueStroke = Instance.new("UIStroke")
+blueStroke.Color = Color3.fromRGB(80, 160, 255)
+blueStroke.Thickness = 1.2
+blueStroke.Parent = blueBtn
+
+-- draggable launcher box
+local function makeDraggableLauncher(handle, panel)
+	local dragging, start, pos
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			start = input.Position
+			pos   = panel.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - start
+			panel.Position = UDim2.new(pos.X.Scale, pos.X.Offset+delta.X, pos.Y.Scale, pos.Y.Offset+delta.Y)
+		end
+	end)
+end
+makeDraggableLauncher(boxTitle, box)
+
+-- ===================== LAUNCH =====================
+local function launch(withMusic)
+	launcherGui:Destroy()
+	loadstring(HITBOX_SCRIPT)()
+	if withMusic then
+		task.wait(0.5)
+		loadstring(MUSIC_SCRIPT)()
 	end
-	loadLegacy()
 end
 
-normalBtn.MouseButton1Click:Connect(function() start(false) end)
-musicBtn.MouseButton1Click:Connect(function() start(true) end)
+greenBtn.MouseButton1Click:Connect(function() launch(false) end)
+blueBtn.MouseButton1Click:Connect(function()  launch(true)  end)
 
-function loadLegacy()
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "Legacy"
-	gui.ResetOnSpawn = false
-	gui.Parent = pg
-
-	local eye = Instance.new("TextButton")
-	eye.Size = UDim2.new(0, 42, 0, 42)
-	eye.Position = UDim2.new(0, 12, 0.45, 0)
-	eye.BackgroundColor3 = Color3.fromRGB(18,18,28)
-	eye.Text = "👁️"
-	eye.TextSize = 19
-	eye.Font = Enum.Font.GothamBold
-	eye.TextColor3 = Color3.new(1,1,1)
-	eye.BorderSizePixel = 0
-	eye.Parent = gui
-	Instance.new("UICorner", eye).CornerRadius = UDim.new(1, 0)
-
-	local main = Instance.new("Frame")
-	main.Size = UDim2.new(0, 360, 0, 400)
-	main.Position = UDim2.new(0.5, -180, 0.5, -200)
-	main.BackgroundColor3 = Color3.fromRGB(14,14,20)
-	main.BorderSizePixel = 0
-	main.Visible = false
-	main.Parent = gui
-	Instance.new("UICorner", main).CornerRadius = UDim.new(0, 11)
-
-	local titleBar = Instance.new("Frame")
-	titleBar.Size = UDim2.new(1,0,0,32)
-	titleBar.BackgroundColor3 = Color3.fromRGB(20,20,30)
-	titleBar.BorderSizePixel = 0
-	titleBar.Parent = main
-	Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 11)
-
-	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -35, 1, 0)
-	title.Position = UDim2.new(0, 12, 0, 0)
-	title.BackgroundTransparency = 1
-	title.Text = "Legacy Mode"
-	title.Font = Enum.Font.GothamBold
-	title.TextSize = 14
-	title.TextColor3 = Color3.fromRGB(180,150,255)
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Parent = titleBar
-
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.new(0, 26, 0, 26)
-	closeBtn.Position = UDim2.new(1, -30, 0, 3)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(35,35,45)
-	closeBtn.Text = "X"
-	closeBtn.Font = Enum.Font.GothamBold
-	closeBtn.TextSize = 13
-	closeBtn.TextColor3 = Color3.new(1,1,1)
-	closeBtn.BorderSizePixel = 0
-	closeBtn.Parent = titleBar
-	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
-
-	local side = Instance.new("Frame")
-	side.Size = UDim2.new(0, 85, 1, -40)
-	side.Position = UDim2.new(0, 6, 0, 36)
-	side.BackgroundColor3 = Color3.fromRGB(18,18,26)
-	side.BorderSizePixel = 0
-	side.Parent = main
-	Instance.new("UICorner", side).CornerRadius = UDim.new(0, 9)
-
-	local function makeTab(name, y)
-		local b = Instance.new("TextButton")
-		b.Size = UDim2.new(1, -8, 0, 26)
-		b.Position = UDim2.new(0, 4, 0, y)
-		b.BackgroundColor3 = Color3.fromRGB(28,28,38)
-		b.Text = name
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = 11
-		b.TextColor3 = Color3.new(1,1,1)
-		b.BorderSizePixel = 0
-		b.Parent = side
-		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
-		return b
-	end
-
-	local hitboxTab = makeTab("Hitbox", 6)
-	local espTab = makeTab("ESP", 36)
-	local moreTab = makeTab("More", 66)
-	local colorTab = makeTab("Color", 96)
-
-	local content = Instance.new("Frame")
-	content.Size = UDim2.new(1, -100, 1, -46)
-	content.Position = UDim2.new(0, 95, 0, 40)
-	content.BackgroundTransparency = 1
-	content.Parent = main
-
-	local hitboxPage = Instance.new("ScrollingFrame")
-	hitboxPage.Size = UDim2.new(1,0,1,0)
-	hitboxPage.BackgroundTransparency = 1
-	hitboxPage.ScrollBarThickness = 4
-	hitboxPage.CanvasSize = UDim2.new(0,0,0,560)
-	hitboxPage.Parent = content
-
-	local espPage = Instance.new("Frame")
-	espPage.Size = UDim2.new(1,0,1,0)
-	espPage.BackgroundTransparency = 1
-	espPage.Visible = false
-	espPage.Parent = content
-
-	local morePage = Instance.new("Frame")
-	morePage.Size = UDim2.new(1,0,1,0)
-	morePage.BackgroundTransparency = 1
-	morePage.Visible = false
-	morePage.Parent = content
-
-	local colorPage = Instance.new("Frame")
-	colorPage.Size = UDim2.new(1,0,1,0)
-	colorPage.BackgroundTransparency = 1
-	colorPage.Visible = false
-	colorPage.Parent = content
-
-	local descFrame = Instance.new("Frame")
-	descFrame.Size = UDim2.new(0, 210, 0, 80)
-	descFrame.BackgroundColor3 = Color3.fromRGB(25,25,35)
-	descFrame.BorderSizePixel = 0
-	descFrame.Visible = false
-	descFrame.ZIndex = 20
-	descFrame.Parent = main
-	Instance.new("UICorner", descFrame).CornerRadius = UDim.new(0, 8)
-
-	local descLabel = Instance.new("TextLabel")
-	descLabel.Size = UDim2.new(1, -12, 1, -12)
-	descLabel.Position = UDim2.new(0, 6, 0, 6)
-	descLabel.BackgroundTransparency = 1
-	descLabel.TextColor3 = Color3.fromRGB(220,220,255)
-	descLabel.TextWrapped = true
-	descLabel.Font = Enum.Font.Gotham
-	descLabel.TextSize = 12
-	descLabel.TextXAlignment = Enum.TextXAlignment.Left
-	descLabel.TextYAlignment = Enum.TextYAlignment.Top
-	descLabel.ZIndex = 21
-	descLabel.Parent = descFrame
-
-	local function showDesc(text)
-		descLabel.Text = text
-		descFrame.Position = UDim2.new(0.5, -105, 0.5, -40)
-		descFrame.Visible = true
-		task.delay(3.5, function()
-			descFrame.Visible = false
-		end)
-	end
-
-	local function label(text, y, parent)
-		local l = Instance.new("TextLabel")
-		l.Size = UDim2.new(1, -70, 0, 18)
-		l.Position = UDim2.new(0,5,0,y)
-		l.BackgroundTransparency = 1
-		l.Text = text
-		l.Font = Enum.Font.GothamBold
-		l.TextSize = 12
-		l.TextColor3 = Color3.fromRGB(200,190,255)
-		l.TextXAlignment = Enum.TextXAlignment.Left
-		l.Parent = parent
-	end
-
-	local function makeToggle(name, y, parent, default)
-		label(name, y, parent)
-
-		local help = Instance.new("TextButton")
-		help.Size = UDim2.new(0, 18, 0, 18)
-		help.Position = UDim2.new(0, 115, 0, y)
-		help.BackgroundColor3 = Color3.fromRGB(40,40,55)
-		help.Text = "?"
-		help.Font = Enum.Font.GothamBold
-		help.TextSize = 11
-		help.TextColor3 = Color3.new(1,1,1)
-		help.BorderSizePixel = 0
-		help.Parent = parent
-		Instance.new("UICorner", help).CornerRadius = UDim.new(1, 0)
-
-		help.MouseButton1Click:Connect(function()
-			showDesc(Descriptions[name] or "No description.")
-		end)
-
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(0,48,0,22)
-		btn.Position = UDim2.new(1,-55,0,y)
-		btn.BackgroundColor3 = default and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-		btn.Text = default and "ON" or "OFF"
-		btn.Font = Enum.Font.GothamBold
-		btn.TextSize = 11
-		btn.TextColor3 = Color3.new(1,1,1)
-		btn.BorderSizePixel = 0
-		btn.Parent = parent
-		Instance.new("UICorner", btn).CornerRadius = UDim.new(0,6)
-		return btn
-	end
-
-	-- Hitbox Page
-	local headToggle = makeToggle("Head", 5, hitboxPage, true)
-	local bodyToggle = makeToggle("Body", 35, hitboxPage, false)
-	local meleeToggle = makeToggle("Melee", 65, hitboxPage, false)
-	local threatToggle = makeToggle("Threat Color", 95, hitboxPage, true)
-	local autoSizeToggle = makeToggle("Auto Size", 125, hitboxPage, false)
-	local removeDeathToggle = makeToggle("Remove on Death", 155, hitboxPage, true)
-	local deathWhisperToggle = makeToggle("Death Whisper", 185, hitboxPage, false)
-	local pulseToggle = makeToggle("Hitbox Pulse", 215, hitboxPage, false)
-	local aggroToggle = makeToggle("Aggro Sound", 245, hitboxPage, false)
-
-	label("Head Size", 280, hitboxPage)
-	local headBox = Instance.new("TextBox")
-	headBox.Size = UDim2.new(0,48,0,22)
-	headBox.Position = UDim2.new(1,-55,0,280)
-	headBox.BackgroundColor3 = Color3.fromRGB(28,28,38)
-	headBox.Text = "4"
-	headBox.Font = Enum.Font.Gotham
-	headBox.TextSize = 12
-	headBox.TextColor3 = Color3.new(1,1,1)
-	headBox.BorderSizePixel = 0
-	headBox.Parent = hitboxPage
-	Instance.new("UICorner", headBox).CornerRadius = UDim.new(0,6)
-
-	label("Body Size", 310, hitboxPage)
-	local bodyBox = Instance.new("TextBox")
-	bodyBox.Size = UDim2.new(0,48,0,22)
-	bodyBox.Position = UDim2.new(1,-55,0,310)
-	bodyBox.BackgroundColor3 = Color3.fromRGB(28,28,38)
-	bodyBox.Text = "7"
-	bodyBox.Font = Enum.Font.Gotham
-	bodyBox.TextSize = 12
-	bodyBox.TextColor3 = Color3.new(1,1,1)
-	bodyBox.BorderSizePixel = 0
-	bodyBox.Parent = hitboxPage
-	Instance.new("UICorner", bodyBox).CornerRadius = UDim.new(0,6)
-
-	label("Transparency", 340, hitboxPage)
-	local transBox = Instance.new("TextBox")
-	transBox.Size = UDim2.new(0,48,0,22)
-	transBox.Position = UDim2.new(1,-55,0,340)
-	transBox.BackgroundColor3 = Color3.fromRGB(28,28,38)
-	transBox.Text = "0.55"
-	transBox.Font = Enum.Font.Gotham
-	transBox.TextSize = 12
-	transBox.TextColor3 = Color3.new(1,1,1)
-	transBox.BorderSizePixel = 0
-	transBox.Parent = hitboxPage
-	Instance.new("UICorner", transBox).CornerRadius = UDim.new(0,6)
-
-	local hitboxStatus = Instance.new("TextButton")
-	hitboxStatus.Size = UDim2.new(0,120,0,26)
-	hitboxStatus.Position = UDim2.new(0.5,-60,0,380)
-	hitboxStatus.BackgroundColor3 = Color3.fromRGB(50,50,65)
-	hitboxStatus.Text = "Hitbox: OFF"
-	hitboxStatus.Font = Enum.Font.GothamBold
-	hitboxStatus.TextSize = 12
-	hitboxStatus.TextColor3 = Color3.new(1,1,1)
-	hitboxStatus.BorderSizePixel = 0
-	hitboxStatus.Parent = hitboxPage
-	Instance.new("UICorner", hitboxStatus).CornerRadius = UDim.new(0,7)
-
-	-- ESP Page
-	label("ESP Colors", 5, espPage)
-	local function makeColorBtn(name, col, x)
-		local b = Instance.new("TextButton")
-		b.Size = UDim2.new(0,55,0,26)
-		b.Position = UDim2.new(0,x,0,30)
-		b.BackgroundColor3 = col
-		b.Text = name
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = 11
-		b.TextColor3 = Color3.new(1,1,1)
-		b.BorderSizePixel = 0
-		b.Parent = espPage
-		Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
-		return b
-	end
-	local redBtn = makeColorBtn("Red", Color3.fromRGB(231,76,60), 5)
-	local blueBtn = makeColorBtn("Blue", Color3.fromRGB(52,152,219), 70)
-	local greenBtn = makeColorBtn("Green", Color3.fromRGB(46,204,113), 135)
-
-	label("ESP Style", 70, espPage)
-	local solidBtn = Instance.new("TextButton")
-	solidBtn.Size = UDim2.new(0,70,0,26)
-	solidBtn.Position = UDim2.new(0,5,0,95)
-	solidBtn.BackgroundColor3 = Color3.fromRGB(50,50,65)
-	solidBtn.Text = "Solid"
-	solidBtn.Font = Enum.Font.GothamBold
-	solidBtn.TextSize = 12
-	solidBtn.TextColor3 = Color3.new(1,1,1)
-	solidBtn.BorderSizePixel = 0
-	solidBtn.Parent = espPage
-	Instance.new("UICorner", solidBtn).CornerRadius = UDim.new(0,6)
-
-	local faintBtn = Instance.new("TextButton")
-	faintBtn.Size = UDim2.new(0,70,0,26)
-	faintBtn.Position = UDim2.new(0,85,0,95)
-	faintBtn.BackgroundColor3 = Color3.fromRGB(0,150,80)
-	faintBtn.Text = "Faint"
-	faintBtn.Font = Enum.Font.GothamBold
-	faintBtn.TextSize = 12
-	faintBtn.TextColor3 = Color3.new(1,1,1)
-	faintBtn.BorderSizePixel = 0
-	faintBtn.Parent = espPage
-	Instance.new("UICorner", faintBtn).CornerRadius = UDim.new(0,6)
-
-	local espStatus = Instance.new("TextButton")
-	espStatus.Size = UDim2.new(0,120,0,26)
-	espStatus.Position = UDim2.new(0.5,-60,0,140)
-	espStatus.BackgroundColor3 = Color3.fromRGB(50,50,65)
-	espStatus.Text = "ESP: OFF"
-	espStatus.Font = Enum.Font.GothamBold
-	espStatus.TextSize = 12
-	espStatus.TextColor3 = Color3.new(1,1,1)
-	espStatus.BorderSizePixel = 0
-	espStatus.Parent = espPage
-	Instance.new("UICorner", espStatus).CornerRadius = UDim.new(0,7)
-
-	-- MORE PAGE
-	label("Max Distance Cap", 10, morePage)
-	label("(Default 300 | Max 2000)", 30, morePage)
-
-	local distBox = Instance.new("TextBox")
-	distBox.Size = UDim2.new(0, 80, 0, 26)
-	distBox.Position = UDim2.new(0, 5, 0, 55)
-	distBox.BackgroundColor3 = Color3.fromRGB(28,28,38)
-	distBox.Text = "300"
-	distBox.Font = Enum.Font.GothamBold
-	distBox.TextSize = 13
-	distBox.TextColor3 = Color3.new(1,1,1)
-	distBox.BorderSizePixel = 0
-	distBox.Parent = morePage
-	Instance.new("UICorner", distBox).CornerRadius = UDim.new(0,6)
-
-	local indicatorToggle = makeToggle("Indicator", 95, morePage, false)
-	local redSymbolToggle = makeToggle("Red symbol", 125, morePage, false)   -- NEW
-
-	local distInfo = Instance.new("TextLabel")
-	distInfo.Size = UDim2.new(1, -10, 0, 50)
-	distInfo.Position = UDim2.new(0, 5, 0, 160)
-	distInfo.BackgroundTransparency = 1
-	distInfo.Text = "Indicator only works for YOU.\nRed symbol = temporary red glow (off by default)."
-	distInfo.Font = Enum.Font.Gotham
-	distInfo.TextSize = 11
-	distInfo.TextColor3 = Color3.fromRGB(180,180,200)
-	distInfo.TextXAlignment = Enum.TextXAlignment.Left
-	distInfo.TextYAlignment = Enum.TextYAlignment.Top
-	distInfo.TextWrapped = true
-	distInfo.Parent = morePage
-
-	-- Color Page
-	label("Hitbox Color", 5, colorPage)
-	local function makeHitColor(name, col, x, y)
-		local b = Instance.new("TextButton")
-		b.Size = UDim2.new(0,55,0,26)
-		b.Position = UDim2.new(0,x,0,y)
-		b.BackgroundColor3 = col
-		b.Text = name
-		b.Font = Enum.Font.GothamBold
-		b.TextSize = 11
-		b.TextColor3 = Color3.new(1,1,1)
-		b.BorderSizePixel = 0
-		b.Parent = colorPage
-		Instance.new("UICorner", b).CornerRadius = UDim.new(0,6)
-		return b
-	end
-	local hRed = makeHitColor("Red", Color3.fromRGB(255,40,40), 5, 30)
-	local hBlue = makeHitColor("Blue", Color3.fromRGB(40,120,255), 70, 30)
-	local hGreen = makeHitColor("Green", Color3.fromRGB(40,220,80), 135, 30)
-	local hPurple = makeHitColor("Purple", Color3.fromRGB(180,40,255), 5, 65)
-
-	local function switch(page)
-		hitboxPage.Visible = false
-		espPage.Visible = false
-		morePage.Visible = false
-		colorPage.Visible = false
-		page.Visible = true
-	end
-
-	hitboxTab.MouseButton1Click:Connect(function() switch(hitboxPage) end)
-	espTab.MouseButton1Click:Connect(function() switch(espPage) end)
-	moreTab.MouseButton1Click:Connect(function() switch(morePage) end)
-	colorTab.MouseButton1Click:Connect(function() switch(colorPage) end)
-
-	eye.MouseButton1Click:Connect(function() main.Visible = not main.Visible end)
-	closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
-
-	local function makeDraggable(handle, panel)
-		local dragging, start, pos
-		handle.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				dragging = true
-				start = input.Position
-				pos = panel.Position
-				input.Changed:Connect(function()
-					if input.UserInputState == Enum.UserInputState.End then dragging = false end
-				end)
-			end
-		end)
-		UIS.InputChanged:Connect(function(input)
-			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-				local delta = input.Position - start
-				panel.Position = UDim2.new(pos.X.Scale, pos.X.Offset + delta.X, pos.Y.Scale, pos.Y.Offset + delta.Y)
-			end
-		end)
-	end
-	makeDraggable(titleBar, main)
-	makeDraggable(eye, eye)
-
-	-- CORE
-	local function isNPC(model)
-		if not model or not model:IsA("Model") then return false end
-		if Blacklist[model.Name] then return false end
-		local hum = model:FindFirstChildOfClass("Humanoid")
-		if not hum then return false end
-		return Players:GetPlayerFromCharacter(model) == nil
-	end
-
-	local function getDistance(char)
-		local myRoot = lp.Character and (lp.Character:FindFirstChild("HumanoidRootPart") or lp.Character:FindFirstChild("Torso"))
-		local otherRoot = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-		if myRoot and otherRoot then
-			return (myRoot.Position - otherRoot.Position).Magnitude
-		end
-		return 9999
-	end
-
-	local function savePart(part)
-		if part and not ModifiedParts[part] then
-			ModifiedParts[part] = {
-				Size = part.Size,
-				Transparency = part.Transparency,
-				Color = part.Color,
-				Material = part.Material,
-				CanCollide = part.CanCollide
-			}
-		end
-	end
-
-	local function restorePart(part)
-		local data = ModifiedParts[part]
-		if data and part and part.Parent then
-			pcall(function()
-				part.Size = data.Size
-				part.Transparency = data.Transparency
-				part.Color = data.Color
-				part.Material = data.Material
-				part.CanCollide = data.CanCollide
-			end)
-			ModifiedParts[part] = nil
-		end
-	end
-
-	local function restoreAll()
-		for part in pairs(ModifiedParts) do
-			restorePart(part)
-		end
-		ModifiedParts = {}
-	end
-
-	local function clearESP()
-		for char, h in pairs(ActiveHighlights) do
-			if h and h.Parent then h:Destroy() end
-		end
-		ActiveHighlights = {}
-	end
-
-	local function showDeathWhisper(pos)
-		if not DEATH_WHISPER then return end
-		local msg = scaryMessages[math.random(1, #scaryMessages)]
-		local part = Instance.new("Part")
-		part.Anchored = true
-		part.CanCollide = false
-		part.Transparency = 1
-		part.Position = pos + Vector3.new(0, 3, 0)
-		part.Parent = Workspace
-
-		local bill = Instance.new("BillboardGui")
-		bill.Size = UDim2.new(0, 200, 0, 40)
-		bill.AlwaysOnTop = true
-		bill.Adornee = part
-		bill.Parent = part
-
-		local label = Instance.new("TextLabel")
-		label.Size = UDim2.new(1,0,1,0)
-		label.BackgroundTransparency = 1
-		label.Text = msg
-		label.TextColor3 = Color3.fromRGB(255, 60, 60)
-		label.TextStrokeTransparency = 0.3
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 14
-		label.Parent = bill
-
-		task.delay(3.5, function()
-			part:Destroy()
-		end)
-	end
-
-	local function applyNPCHitbox(char)
-		if not isNPC(char) then return end
-		local dist = getDistance(char)
-		if dist > maxDistance then return end
-
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if not hum or hum.Health <= 0 then return end
-
-		local sizeMult = 1
-		if AUTO_SIZE then
-			sizeMult = math.clamp(1.35 - (dist / 150), 0.75, 1.35)
-		end
-
-		local finalColor = currentColor
-		if THREAT_COLOR then
-			if dist <= 18 then
-				finalColor = Color3.fromRGB(255, 20, 20)
-			elseif dist <= 40 then
-				finalColor = Color3.fromRGB(255, 140, 30)
-			else
-				finalColor = Color3.fromRGB(30, 220, 70)
-			end
-		end
-
-		local head = char:FindFirstChild("Head")
-		local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-
-		if useHead and head then
-			savePart(head)
-			head.Size = Vector3.new(headSize * sizeMult, headSize * sizeMult, headSize * sizeMult)
-			head.Material = Enum.Material.Neon
-			head.Color = finalColor
-			head.Transparency = transparency
-			head.CanCollide = false
-
-			if PULSE then
-				task.spawn(function()
-					local original = head.Size
-					head.Size = original * 1.3
-					task.wait(0.12)
-					if head and head.Parent then
-						head.Size = original
-					end
-				end)
-			end
-		end
-		if useBody and hrp then
-			savePart(hrp)
-			hrp.Size = Vector3.new(bodySize * sizeMult, bodySize * sizeMult, bodySize * sizeMult)
-			hrp.Material = Enum.Material.Neon
-			hrp.Color = finalColor
-			hrp.Transparency = transparency
-			hrp.CanCollide = false
-		end
-		if MELEE_ON then
-			for _, part in pairs(char:GetDescendants()) do
-				if part:IsA("BasePart") then
-					savePart(part)
-					part.Size = Vector3.new(5 * sizeMult, 5 * sizeMult, 5 * sizeMult)
-					part.Transparency = transparency
-					part.CanCollide = false
-				end
-			end
-		end
-	end
-
-	local function applyESP(char)
-		if not isNPC(char) then return end
-		local dist = getDistance(char)
-		if dist > maxDistance then return end
-
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if not hum or hum.Health <= 0 then return end
-
-		local h = ActiveHighlights[char]
-		if not h or not h.Parent then
-			h = Instance.new("Highlight")
-			h.Name = "NPCHighlight"
-			h.Adornee = char
-			h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-			h.Parent = char
-			ActiveHighlights[char] = h
-		end
-		h.FillColor = currentColor
-		h.FillTransparency = fillTrans
-		h.Enabled = true
-	end
-
-	local function onNPCDied(char)
-		if REMOVE_ON_DEATH then
-			for _, part in pairs(char:GetDescendants()) do
-				if part:IsA("BasePart") then
-					restorePart(part)
-				end
-			end
-		end
-
-		local h = ActiveHighlights[char]
-		if h then
-			h:Destroy()
-			ActiveHighlights[char] = nil
-		end
-
-		clearIndicator(char)
-
-		if DEATH_WHISPER then
-			local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso")
-			if root then
-				showDeathWhisper(root.Position)
-			end
-		end
-
-		KnownNPCs[char] = nil
-	end
-
-	local function registerNPC(char)
-		if KnownNPCs[char] then return end
-		if not isNPC(char) then return end
-		KnownNPCs[char] = true
-
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.Died:Connect(function()
-				onNPCDied(char)
-			end)
-
-			-- Only show ? if YOU recently shot
-			hum.HealthChanged:Connect(function()
-				if hum.Health < hum.MaxHealth and INDICATOR then
-					if tick() - lastPlayerShot < 1.2 then   -- only if you shot in the last 1.2 seconds
-						setIndicator(char, "?", Color3.fromRGB(255, 255, 80))
-					end
-				end
-			end)
-		end
-	end
-
-	-- ONLY when NPC damages YOU
-	local function setupPlayerDamageDetection()
-		local function connectCharacter(char)
-			local hum = char:WaitForChild("Humanoid", 5)
-			if not hum then return end
-
-			local lastHealth = hum.Health
-			hum.HealthChanged:Connect(function(newHealth)
-				if newHealth < lastHealth then
-					playAggroSound()
-
-					for npc in pairs(KnownNPCs) do
-						if npc and npc.Parent then
-							local dist = getDistance(npc)
-							if dist <= 90 then
-								tempHighlight(npc)          -- only if Red symbol is ON
-								if INDICATOR then
-									setIndicator(npc, "!!!", Color3.fromRGB(255, 60, 60))
-								end
-							end
-						end
-					end
-				end
-				lastHealth = newHealth
-			end)
-		end
-
-		if lp.Character then
-			connectCharacter(lp.Character)
-		end
-		lp.CharacterAdded:Connect(connectCharacter)
-	end
-	setupPlayerDamageDetection()
-
-	for _, obj in pairs(Workspace:GetDescendants()) do
-		if obj:IsA("Model") and isNPC(obj) then
-			registerNPC(obj)
-		end
-	end
-
-	Workspace.DescendantAdded:Connect(function(obj)
-		if obj:IsA("Humanoid") and obj.Parent then
-			task.defer(function()
-				registerNPC(obj.Parent)
-				if HITBOX_ON then applyNPCHitbox(obj.Parent) end
-				if ESP_ON then applyESP(obj.Parent) end
-			end)
-		end
-	end)
-
-	local lastUpdate = 0
-	RunService.Heartbeat:Connect(function()
-		if not HITBOX_ON and not ESP_ON then return end
-		if tick() - lastUpdate < 0.45 then return end
-		lastUpdate = tick()
-
-		for char in pairs(KnownNPCs) do
-			if char and char.Parent then
-				if HITBOX_ON then applyNPCHitbox(char) end
-				if ESP_ON then applyESP(char) end
-			else
-				KnownNPCs[char] = nil
-			end
-		end
-	end)
-
-	local function refresh()
-		if HITBOX_ON then
-			for char in pairs(KnownNPCs) do
-				if char and char.Parent then applyNPCHitbox(char) end
-			end
-		else
-			restoreAll()
-		end
-		if ESP_ON then
-			for char in pairs(KnownNPCs) do
-				if char and char.Parent then applyESP(char) end
-			end
-		else
-			clearESP()
-		end
-	end
-
-	-- Buttons
-	headToggle.MouseButton1Click:Connect(function()
-		useHead = not useHead
-		headToggle.Text = useHead and "ON" or "OFF"
-		headToggle.BackgroundColor3 = useHead and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-		refresh()
-	end)
-
-	bodyToggle.MouseButton1Click:Connect(function()
-		useBody = not useBody
-		bodyToggle.Text = useBody and "ON" or "OFF"
-		bodyToggle.BackgroundColor3 = useBody and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-		refresh()
-	end)
-
-	meleeToggle.MouseButton1Click:Connect(function()
-		MELEE_ON = not MELEE_ON
-		meleeToggle.Text = MELEE_ON and "ON" or "OFF"
-		meleeToggle.BackgroundColor3 = MELEE_ON and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-		refresh()
-	end)
-
-	threatToggle.MouseButton1Click:Connect(function()
-		THREAT_COLOR = not THREAT_COLOR
-		threatToggle.Text = THREAT_COLOR and "ON" or "OFF"
-		threatToggle.BackgroundColor3 = THREAT_COLOR and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-		refresh()
-	end)
-
-	autoSizeToggle.MouseButton1Click:Connect(function()
-		AUTO_SIZE = not AUTO_SIZE
-		autoSizeToggle.Text = AUTO_SIZE and "ON" or "OFF"
-		autoSizeToggle.BackgroundColor3 = AUTO_SIZE and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-		refresh()
-	end)
-
-	removeDeathToggle.MouseButton1Click:Connect(function()
-		REMOVE_ON_DEATH = not REMOVE_ON_DEATH
-		removeDeathToggle.Text = REMOVE_ON_DEATH and "ON" or "OFF"
-		removeDeathToggle.BackgroundColor3 = REMOVE_ON_DEATH and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-	end)
-
-	deathWhisperToggle.MouseButton1Click:Connect(function()
-		DEATH_WHISPER = not DEATH_WHISPER
-		deathWhisperToggle.Text = DEATH_WHISPER and "ON" or "OFF"
-		deathWhisperToggle.BackgroundColor3 = DEATH_WHISPER and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-	end)
-
-	pulseToggle.MouseButton1Click:Connect(function()
-		PULSE = not PULSE
-		pulseToggle.Text = PULSE and "ON" or "OFF"
-		pulseToggle.BackgroundColor3 = PULSE and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-	end)
-
-	aggroToggle.MouseButton1Click:Connect(function()
-		AGGRO_SOUND = not AGGRO_SOUND
-		aggroToggle.Text = AGGRO_SOUND and "ON" or "OFF"
-		aggroToggle.BackgroundColor3 = AGGRO_SOUND and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-	end)
-
-	indicatorToggle.MouseButton1Click:Connect(function()
-		INDICATOR = not INDICATOR
-		indicatorToggle.Text = INDICATOR and "ON" or "OFF"
-		indicatorToggle.BackgroundColor3 = INDICATOR and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-		if not INDICATOR then
-			for char in pairs(Indicators) do
-				clearIndicator(char)
-			end
-		end
-	end)
-
-	redSymbolToggle.MouseButton1Click:Connect(function()
-		RED_SYMBOL = not RED_SYMBOL
-		redSymbolToggle.Text = RED_SYMBOL and "ON" or "OFF"
-		redSymbolToggle.BackgroundColor3 = RED_SYMBOL and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,60)
-		if not RED_SYMBOL then
-			for char, h in pairs(TempHighlights) do
-				if h and h.Parent then h:Destroy() end
-			end
-			TempHighlights = {}
-		end
-	end)
-
-	distBox.FocusLost:Connect(function()
-		local n = tonumber(distBox.Text)
-		if n then
-			n = math.clamp(n, 50, 2000)
-			maxDistance = n
-			distBox.Text = tostring(n)
-			refresh()
-		else
-			distBox.Text = tostring(maxDistance)
-		end
-	end)
-
-	headBox.FocusLost:Connect(function()
-		local n = tonumber(headBox.Text)
-		if n and n > 0 then headSize = n refresh() end
-	end)
-
-	bodyBox.FocusLost:Connect(function()
-		local n = tonumber(bodyBox.Text)
-		if n and n > 0 then bodySize = n refresh() end
-	end)
-
-	transBox.FocusLost:Connect(function()
-		local n = tonumber(transBox.Text)
-		if n and n >= 0 and n <= 1 then transparency = n refresh() end
-	end)
-
-	hitboxStatus.MouseButton1Click:Connect(function()
-		if HITBOX_ON then
-			HITBOX_ON = false
-			restoreAll()
-			hitboxStatus.Text = "Hitbox: OFF"
-			hitboxStatus.BackgroundColor3 = Color3.fromRGB(50,50,65)
-		else
-			HITBOX_ON = true
-			hitboxStatus.Text = "Hitbox: ON"
-			hitboxStatus.BackgroundColor3 = Color3.fromRGB(0,150,80)
-			refresh()
-		end
-	end)
-
-	espStatus.MouseButton1Click:Connect(function()
-		ESP_ON = not ESP_ON
-		espStatus.Text = ESP_ON and "ESP: ON" or "ESP: OFF"
-		espStatus.BackgroundColor3 = ESP_ON and Color3.fromRGB(0,150,80) or Color3.fromRGB(50,50,65)
-		if ESP_ON then refresh() else clearESP() end
-	end)
-
-	solidBtn.MouseButton1Click:Connect(function()
-		fillTrans = 0
-		solidBtn.BackgroundColor3 = Color3.fromRGB(0,150,80)
-		faintBtn.BackgroundColor3 = Color3.fromRGB(50,50,65)
-		if ESP_ON then refresh() end
-	end)
-
-	faintBtn.MouseButton1Click:Connect(function()
-		fillTrans = 0.5
-		faintBtn.BackgroundColor3 = Color3.fromRGB(0,150,80)
-		solidBtn.BackgroundColor3 = Color3.fromRGB(50,50,65)
-		if ESP_ON then refresh() end
-	end)
-
-	redBtn.MouseButton1Click:Connect(function() currentColor = Color3.fromRGB(255,50,50) refresh() end)
-	blueBtn.MouseButton1Click:Connect(function() currentColor = Color3.fromRGB(52,152,219) refresh() end)
-	greenBtn.MouseButton1Click:Connect(function() currentColor = Color3.fromRGB(46,204,113) refresh() end)
-
-	hRed.MouseButton1Click:Connect(function() currentColor = Color3.fromRGB(255,40,40) refresh() end)
-	hBlue.MouseButton1Click:Connect(function() currentColor = Color3.fromRGB(40,120,255) refresh() end)
-	hGreen.MouseButton1Click:Connect(function() currentColor = Color3.fromRGB(40,220,80) refresh() end)
-	hPurple.MouseButton1Click:Connect(function() currentColor = Color3.fromRGB(180,40,255) refresh() end)
-
-	print("Legacy Full - Red symbol toggle + Indicator only for you loaded")
-end
-
-print("Ready")
+print("Launcher ready")

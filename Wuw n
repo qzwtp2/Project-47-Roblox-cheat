@@ -1,0 +1,222 @@
+-- Raid Night Tide ESP
+-- Team: Gray | Enemy: Red | Civilian/Prisoner: Yellow
+-- Outline highlight style (like the image)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- CONFIG
+local ESP_CONFIG = {
+    Enabled = true,
+    TeamColor = Color3.fromRGB(180, 180, 180),   -- Gray
+    EnemyColor = Color3.fromRGB(220, 30, 30),    -- Red
+    CivilianColor = Color3.fromRGB(220, 200, 0), -- Yellow
+    OutlineThickness = 2,
+    FillTransparency = 0.85,
+    OutlineTransparency = 0.0,
+}
+
+-- Track highlights
+local highlights = {}
+
+-- Determine role from character/player tags
+local function getRole(player)
+    -- Adjust these tag/attribute names to match the actual game
+    local char = player.Character
+    if not char then return nil end
+
+    -- Check common role tags (modify to match actual game logic)
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+
+    -- Check for NPC civilians/prisoners (non-player characters in workspace)
+    -- These won't have a Players entry — handled separately below
+
+    -- Team-based check for players
+    if player.Team then
+        if player.Team == LocalPlayer.Team then
+            return "team"
+        else
+            return "enemy"
+        end
+    end
+
+    -- Fallback: enemy
+    return "enemy"
+end
+
+-- Get color for a role
+local function roleColor(role)
+    if role == "team" then return ESP_CONFIG.TeamColor
+    elseif role == "civilian" then return ESP_CONFIG.CivilianColor
+    else return ESP_CONFIG.EnemyColor
+    end
+end
+
+-- Create a highlight on a model
+local function applyHighlight(model, role)
+    -- Remove old if exists
+    local old = highlights[model]
+    if old then old:Destroy() end
+
+    local h = Instance.new("Highlight")
+    h.Adornee = model
+    h.FillColor = roleColor(role)
+    h.OutlineColor = roleColor(role)
+    h.FillTransparency = ESP_CONFIG.FillTransparency
+    h.OutlineTransparency = ESP_CONFIG.OutlineTransparency
+    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    h.Parent = model
+
+    highlights[model] = h
+    return h
+end
+
+-- Remove highlight from model
+local function removeHighlight(model)
+    local h = highlights[model]
+    if h then
+        h:Destroy()
+        highlights[model] = nil
+    end
+end
+
+-- === PLAYER ESP ===
+
+local function onPlayerAdded(player)
+    if player == LocalPlayer then return end
+
+    local function onCharAdded(char)
+        -- Wait for humanoid
+        local hum = char:WaitForChild("Humanoid", 5)
+        if not hum then return end
+
+        local role = getRole(player)
+        if not role then return end
+
+        applyHighlight(char, role)
+
+        -- Update on team change
+        player:GetPropertyChangedSignal("Team"):Connect(function()
+            local newRole = getRole(player)
+            if newRole then
+                applyHighlight(char, newRole)
+            end
+        end)
+
+        -- Remove when character removed
+        char.AncestryChanged:Connect(function(_, parent)
+            if not parent then
+                removeHighlight(char)
+            end
+        end)
+
+        -- Remove on death
+        hum.Died:Connect(function()
+            removeHighlight(char)
+        end)
+    end
+
+    if player.Character then onCharAdded(player.Character) end
+    player.CharacterAdded:Connect(onCharAdded)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(function(player)
+    if player.Character then
+        removeHighlight(player.Character)
+    end
+end)
+
+for _, p in ipairs(Players:GetPlayers()) do
+    onPlayerAdded(p)
+end
+
+-- === NPC ESP (Civilians / Prisoners / Dangerous Enemies) ===
+-- Scan workspace for NPC models with known tags or attributes
+
+local NPC_TAGS = {
+    -- Adjust these to actual tag names used in Raid Night Tide
+    civilian  = {"Civilian", "Prisoner", "Hostage"},
+    enemy     = {"Guard", "Enemy", "Raider", "Boss", "DangerousEnemy"},
+}
+
+local function getRoleFromNPC(model)
+    -- Check CollectionService tags or StringValues inside model
+    for _, tag in ipairs(NPC_TAGS.civilian) do
+        if model:FindFirstChild(tag) or model:HasTag(tag) then
+            return "civilian"
+        end
+    end
+    for _, tag in ipairs(NPC_TAGS.enemy) do
+        if model:FindFirstChild(tag) or model:HasTag(tag) then
+            return "enemy"
+        end
+    end
+    -- Check Humanoid NPC (non-player model with humanoid = likely NPC)
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    if hum and not Players:GetPlayerFromCharacter(model) then
+        -- Default NPC: check name heuristics
+        local name = model.Name:lower()
+        if name:find("civil") or name:find("prison") or name:find("hostage") then
+            return "civilian"
+        end
+        if name:find("guard") or name:find("enemy") or name:find("boss") or name:find("danger") then
+            return "enemy"
+        end
+    end
+    return nil
+end
+
+local function scanNPC(model)
+    if Players:GetPlayerFromCharacter(model) then return end -- skip players
+    local role = getRoleFromNPC(model)
+    if role then
+        applyHighlight(model, role)
+
+        -- Remove when model removed
+        model.AncestryChanged:Connect(function(_, parent)
+            if not parent then removeHighlight(model) end
+        end)
+
+        -- Remove on death
+        local hum = model:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum.Died:Connect(function()
+                removeHighlight(model)
+            end)
+        end
+    end
+end
+
+-- Scan existing workspace children
+for _, obj in ipairs(workspace:GetChildren()) do
+    if obj:IsA("Model") then
+        scanNPC(obj)
+    end
+end
+
+-- Watch for new NPCs spawning
+workspace.ChildAdded:Connect(function(obj)
+    if obj:IsA("Model") then
+        task.wait(0.1) -- small delay for tags/children to load
+        scanNPC(obj)
+    end
+end)
+
+-- === TOGGLE (optional keybind: F9) ===
+local UserInputService = game:GetService("UserInputService")
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.F9 then
+        ESP_CONFIG.Enabled = not ESP_CONFIG.Enabled
+        for model, h in pairs(highlights) do
+            h.Enabled = ESP_CONFIG.Enabled
+        end
+        print("[ESP] Toggled:", ESP_CONFIG.Enabled)
+    end
+end)
+
+print("[ESP] Raid Night Tide ESP loaded. F9 to toggle.")

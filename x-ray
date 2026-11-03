@@ -1,0 +1,1300 @@
+------------------------------------------------------------------------
+-- [1] SERVICES + SAFE ACCESS
+------------------------------------------------------------------------
+local Services    = setmetatable({}, { __index = function(_, n) return game:GetService(n) end })
+local Players     = Services.Players
+local RunService  = Services.RunService
+local TweenSvc    = Services.TweenService
+local UIS         = Services.UserInputService
+local Workspace   = Services.Workspace
+
+local localPlr    = Players.LocalPlayer
+
+local cloneref = (typeof(cloneref) == "function") and cloneref or function(x) return x end
+local CoreGui  = cloneref(game:GetService("CoreGui"))
+
+local function getGuiParent()
+    if typeof(gethui) == "function" then
+        local ok, res = pcall(gethui)
+        if ok and res then return res end
+    end
+    local ok = pcall(function() return CoreGui.Name end)
+    if ok then return CoreGui end
+    return localPlr:WaitForChild("PlayerGui")
+end
+
+if typeof(getgenv) == "function" then
+    if getgenv().MATRIX_XRAY_LOADED then
+        warn("[MATRIX X-RAY] Already loaded. Cleaning old version...")
+        pcall(function() getgenv().MATRIX_XRAY_CLEANUP() end)
+    end
+    getgenv().MATRIX_XRAY_LOADED = true
+end
+
+------------------------------------------------------------------------
+-- [2] IDENTITIES + THEME + SETTINGS
+------------------------------------------------------------------------
+local ASSET_GLASSES = "rbxassetid://25907037"
+local SOUND_ACT     = "rbxassetid://124303343176603"
+local SOUND_MUSIC   = "rbxassetid://80831299890136"
+
+local THEME = {
+    Neon       = Color3.fromRGB(0, 255, 140),
+    NeonSoft   = Color3.fromRGB(120, 255, 190),
+    NeonDim    = Color3.fromRGB(0, 140, 80),
+    Bg         = Color3.fromRGB(3, 10, 7),
+    BgPanel    = Color3.fromRGB(5, 16, 11),
+    BgRow      = Color3.fromRGB(8, 24, 16),
+    Off        = Color3.fromRGB(14, 34, 24),
+    Text       = Color3.fromRGB(205, 255, 230),
+    TextDim    = Color3.fromRGB(90, 170, 130),
+    Font       = Enum.Font.Code,
+    FontBold   = Enum.Font.Code,
+}
+
+local State = {
+    Master    = false,
+    XRay      = false,
+    Wall      = false,
+    ESP       = false,
+    Chams     = false,
+    TagESP    = false,
+    Music     = true,
+    Minimized = false,
+    NightMode = false,
+}
+
+local ESP_MAX_DISTANCE = 2000
+
+------------------------------------------------------------------------
+-- [3] HELPERS
+------------------------------------------------------------------------
+local function New(class, props, children)
+    local inst = Instance.new(class)
+    for k, v in pairs(props or {}) do
+        if k ~= "Parent" then
+            local ok = pcall(function() inst[k] = v end)
+            if not ok then warn("[MATRIX X-RAY] prop error:", class, k) end
+        end
+    end
+    for _, c in ipairs(children or {}) do c.Parent = inst end
+    if props and props.Parent then inst.Parent = props.Parent end
+    return inst
+end
+
+local function Tween(inst, info, props)
+    local t = TweenSvc:Create(inst, info, props)
+    t:Play()
+    return t
+end
+
+local function MakeDraggable(handle, frame, bounds)
+    local dragging = false
+    local dragStart, startPos
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos  = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            local x = startPos.X.Offset + delta.X
+            local y = startPos.Y.Offset + delta.Y
+            if bounds then
+                x = math.clamp(x, 0, math.max(0, bounds.X - frame.AbsoluteSize.X))
+                y = math.clamp(y, 0, math.max(0, bounds.Y - frame.AbsoluteSize.Y))
+            end
+            frame.Position = UDim2.new(startPos.X.Scale, x, startPos.Y.Scale, y)
+        end
+    end)
+end
+
+local function isCharPart(part)
+    local model = part:FindFirstAncestorOfClass("Model")
+    return model ~= nil and model:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
+local function round(n) return math.floor(n + 0.5) end
+
+------------------------------------------------------------------------
+-- [4] MAIN GUI
+------------------------------------------------------------------------
+local GUI_NAME = "MATRIX_XRAY_GUI_v2"
+local old = getGuiParent():FindFirstChild(GUI_NAME)
+if old then old:Destroy() end
+
+local ScreenGui = New("ScreenGui", {
+    Name = GUI_NAME,
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    DisplayOrder = 999,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    Parent = getGuiParent(),
+})
+
+local MAIN_W, MAIN_H = 470, 328
+local Main = New("Frame", {
+    Name = "Main",
+    Size = UDim2.fromOffset(MAIN_W, MAIN_H),
+    Position = UDim2.new(0.5, -MAIN_W/2, 0.5, -MAIN_H/2),
+    BackgroundColor3 = THEME.Bg,
+    BackgroundTransparency = 0.06,
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+    Parent = ScreenGui,
+}, {
+    New("UICorner", { CornerRadius = UDim.new(0, 10) }),
+})
+
+local MainStroke = New("UIStroke", {
+    Thickness = 1.5,
+    Color = THEME.Neon,
+    Transparency = 0.15,
+    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    Parent = Main,
+})
+local StrokeGrad = New("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0.00, THEME.Neon),
+        ColorSequenceKeypoint.new(0.45, THEME.NeonDim),
+        ColorSequenceKeypoint.new(0.55, THEME.NeonSoft),
+        ColorSequenceKeypoint.new(1.00, THEME.Neon),
+    }),
+    Rotation = 0,
+    Parent = MainStroke,
+})
+
+New("Frame", {
+    Size = UDim2.new(1, 0, 0, 96),
+    BackgroundColor3 = THEME.Neon,
+    BackgroundTransparency = 0.92,
+    BorderSizePixel = 0,
+    Parent = Main,
+}, { New("UIGradient", {
+    Rotation = 90,
+    Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.35),
+        NumberSequenceKeypoint.new(1, 1),
+    }),
+})})
+
+local Header = New("Frame", {
+    Size = UDim2.new(1, 0, 0, 40),
+    BackgroundColor3 = THEME.BgPanel,
+    BackgroundTransparency = 0.15,
+    BorderSizePixel = 0,
+    Parent = Main,
+}, {
+    New("UICorner", { CornerRadius = UDim.new(0, 10) }),
+    New("Frame", {
+        Size = UDim2.new(1, 0, 0, 10),
+        Position = UDim2.new(0, 0, 1, -10),
+        BackgroundColor3 = THEME.BgPanel,
+        BackgroundTransparency = 0.15,
+        BorderSizePixel = 0,
+    }),
+})
+
+local StatusDot = New("Frame", {
+    Size = UDim2.fromOffset(8, 8),
+    Position = UDim2.new(0, 13, 0.5, -4),
+    BackgroundColor3 = THEME.Off,
+    BorderSizePixel = 0,
+    Parent = Header,
+}, {
+    New("UICorner", { CornerRadius = UDim.new(1, 0) }),
+    New("UIStroke", { Color = THEME.NeonDim, Thickness = 1, Transparency = 0.3 }),
+})
+
+New("TextLabel", {
+    Size = UDim2.new(1, -100, 1, -8),
+    Position = UDim2.fromOffset(28, 0),
+    BackgroundTransparency = 1,
+    Font = THEME.FontBold,
+    TextSize = 13,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = THEME.Neon,
+    Text = "MATRIX X-RAY  v2.1",
+    Parent = Header,
+})
+
+New("TextLabel", {
+    Size = UDim2.new(0, 210, 0, 10),
+    Position = UDim2.new(0, 29, 1, -13),
+    BackgroundTransparency = 1,
+    Font = THEME.Font,
+    TextSize = 8,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextColor3 = THEME.TextDim,
+    Text = "id:25907037 // RightShift = toggle // music active",
+    Parent = Header,
+})
+
+local MinBtn = New("TextButton", {
+    Size = UDim2.fromOffset(30, 26),
+    Position = UDim2.new(1, -38, 0.5, -13),
+    BackgroundColor3 = THEME.Off,
+    Font = THEME.FontBold,
+    TextSize = 14,
+    Text = "X",
+    TextColor3 = THEME.Neon,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = Header,
+}, {
+    New("UICorner", { CornerRadius = UDim.new(0, 7) }),
+    New("UIStroke", { Color = THEME.Neon, Thickness = 1.1, Transparency = 0.2 }),
+})
+MinBtn.MouseEnter:Connect(function()
+    Tween(MinBtn, TweenInfo.new(0.15), { BackgroundColor3 = THEME.NeonDim, TextColor3 = Color3.new(0,0,0) })
+end)
+MinBtn.MouseLeave:Connect(function()
+    Tween(MinBtn, TweenInfo.new(0.15), { BackgroundColor3 = THEME.Off, TextColor3 = THEME.Neon })
+end)
+
+local Content = New("ScrollingFrame", {
+    Size = UDim2.new(1, -20, 1, -58),
+    Position = UDim2.fromOffset(10, 48),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 3,
+    ScrollBarImageColor3 = THEME.Neon,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    Parent = Main,
+}, {
+    New("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+})
+
+New("TextLabel", {
+    Size = UDim2.new(1, -20, 0, 9),
+    Position = UDim2.new(0, 10, 1, -11),
+    BackgroundTransparency = 1,
+    Font = THEME.Font,
+    TextSize = 8,
+    TextColor3 = THEME.TextDim,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "matrix aura active // client-side // educational",
+    Parent = Main,
+})
+
+------------------------------------------------------------------------
+-- [5] TOGGLE FACTORY
+------------------------------------------------------------------------
+local RowOrder = 0
+local function CreateToggle(opts)
+    RowOrder += 1
+    local row = New("Frame", {
+        Size = UDim2.new(1, -4, 0, opts.Big and 56 or 46),
+        BackgroundColor3 = THEME.BgRow,
+        BackgroundTransparency = 0.25,
+        BorderSizePixel = 0,
+        LayoutOrder = RowOrder,
+        Parent = Content,
+    }, {
+        New("UICorner", { CornerRadius = UDim.new(0, 7) }),
+        New("UIStroke", { Color = THEME.NeonDim, Thickness = 1, Transparency = 0.72 }),
+    })
+
+    New("TextLabel", {
+        Size = UDim2.fromOffset(28, 28),
+        Position = UDim2.new(0, 8, 0.5, -14),
+        BackgroundColor3 = THEME.Off,
+        Font = THEME.FontBold,
+        TextSize = 13,
+        TextColor3 = THEME.Neon,
+        Text = opts.Icon,
+        BorderSizePixel = 0,
+        Parent = row,
+    }, {
+        New("UICorner", { CornerRadius = UDim.new(0, 6) }),
+        New("UIStroke", { Color = THEME.NeonDim, Thickness = 1, Transparency = 0.4 }),
+    })
+
+    New("TextLabel", {
+        Size = UDim2.new(1, -150, 0, 16),
+        Position = UDim2.fromOffset(44, opts.Big and 8 or 6),
+        BackgroundTransparency = 1,
+        Font = THEME.FontBold,
+        TextSize = opts.Big and 13 or 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextColor3 = THEME.Text,
+        Text = opts.Title,
+        Parent = row,
+    })
+    New("TextLabel", {
+        Size = UDim2.new(1, -150, 0, 12),
+        Position = UDim2.fromOffset(44, opts.Big and 28 or 24),
+        BackgroundTransparency = 1,
+        Font = THEME.Font,
+        TextSize = 9,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextColor3 = THEME.TextDim,
+        Text = opts.Desc,
+        Parent = row,
+    })
+
+    local statusLbl = New("TextLabel", {
+        Size = UDim2.fromOffset(40, 12),
+        Position = UDim2.new(1, -96, 0.5, -6),
+        BackgroundTransparency = 1,
+        Font = THEME.FontBold,
+        TextSize = 9,
+        TextColor3 = THEME.TextDim,
+        Text = "OFF",
+        Parent = row,
+    })
+
+    local track = New("TextButton", {
+        Size = UDim2.fromOffset(46, 23),
+        Position = UDim2.new(1, -52, 0.5, -11),
+        BackgroundColor3 = THEME.Off,
+        Text = "",
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Parent = row,
+    }, {
+        New("UICorner", { CornerRadius = UDim.new(1, 0) }),
+        New("UIStroke", { Color = THEME.NeonDim, Thickness = 1, Transparency = 0.45 }),
+    })
+    local knob = New("Frame", {
+        Size = UDim2.fromOffset(16, 16),
+        Position = UDim2.new(0, 4, 0.5, -8),
+        BackgroundColor3 = Color3.fromRGB(60, 110, 85),
+        BorderSizePixel = 0,
+        Parent = track,
+    }, { New("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+
+    local api = {}
+    function api.Set(value, silent)
+        State[opts.Key] = value and true or false
+        Tween(knob, TweenInfo.new(0.26, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Position = State[opts.Key] and UDim2.new(1, -20, 0.5, -8) or UDim2.new(0, 4, 0.5, -8),
+            BackgroundColor3 = State[opts.Key] and THEME.Neon or Color3.fromRGB(60, 110, 85),
+        })
+        Tween(track, TweenInfo.new(0.18), {
+            BackgroundColor3 = State[opts.Key] and THEME.NeonDim or THEME.Off,
+        })
+        statusLbl.Text = State[opts.Key] and "ON" or "OFF"
+        statusLbl.TextColor3 = State[opts.Key] and THEME.Neon or THEME.TextDim
+        if not silent and opts.Callback then
+            task.spawn(opts.Callback, State[opts.Key])
+        end
+    end
+    track.MouseButton1Click:Connect(function() api.Set(not State[opts.Key]) end)
+    row.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement then
+            Tween(row, TweenInfo.new(0.12), { BackgroundColor3 = Color3.fromRGB(10, 32, 21) })
+        end
+    end)
+    row.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement then
+            Tween(row, TweenInfo.new(0.12), { BackgroundColor3 = THEME.BgRow })
+        end
+    end)
+    return api
+end
+
+------------------------------------------------------------------------
+-- [5.5] ESP DISTANCE SETTING (FIXED)
+------------------------------------------------------------------------
+local function CreateDistanceSetting()
+    RowOrder += 1
+    local row = New("Frame", {
+        Size = UDim2.new(1, -4, 0, 60),
+        BackgroundColor3 = THEME.BgRow,
+        BackgroundTransparency = 0.25,
+        BorderSizePixel = 0,
+        LayoutOrder = RowOrder,
+        Parent = Content,
+    }, {
+        New("UICorner", { CornerRadius = UDim.new(0, 7) }),
+        New("UIStroke", { Color = THEME.NeonDim, Thickness = 1, Transparency = 0.72 }),
+    })
+
+    New("TextLabel", {
+        Size = UDim2.fromOffset(28, 28),
+        Position = UDim2.new(0, 8, 0.5, -14),
+        BackgroundColor3 = THEME.Off,
+        Font = THEME.FontBold,
+        TextSize = 13,
+        TextColor3 = THEME.Neon,
+        Text = "D",
+        BorderSizePixel = 0,
+        Parent = row,
+    }, {
+        New("UICorner", { CornerRadius = UDim.new(0, 6) }),
+        New("UIStroke", { Color = THEME.NeonDim, Thickness = 1, Transparency = 0.4 }),
+    })
+
+    New("TextLabel", {
+        Size = UDim2.new(1, -150, 0, 16),
+        Position = UDim2.fromOffset(44, 6),
+        BackgroundTransparency = 1,
+        Font = THEME.FontBold,
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextColor3 = THEME.Text,
+        Text = "ESP DISTANCE",
+        Parent = row,
+    })
+    local descLbl = New("TextLabel", {
+        Size = UDim2.new(1, -150, 0, 12),
+        Position = UDim2.fromOffset(44, 26),
+        BackgroundTransparency = 1,
+        Font = THEME.Font,
+        TextSize = 9,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextColor3 = THEME.TextDim,
+        Text = "Current: " .. ESP_MAX_DISTANCE .. " studs",
+        Parent = row,
+    })
+
+    local inputBox = New("TextBox", {
+        Size = UDim2.fromOffset(60, 24),
+        Position = UDim2.new(1, -120, 0.5, -12),
+        BackgroundColor3 = THEME.Off,
+        BorderSizePixel = 0,
+        Font = THEME.Font,
+        TextSize = 11,
+        TextColor3 = THEME.Neon,
+        PlaceholderText = "studs",
+        PlaceholderColor3 = THEME.TextDim,
+        Text = tostring(ESP_MAX_DISTANCE),
+        Parent = row,
+    }, {
+        New("UICorner", { CornerRadius = UDim.new(0, 5) }),
+        New("UIStroke", { Color = THEME.NeonDim, Thickness = 1, Transparency = 0.5 }),
+    })
+
+    local applyBtn = New("TextButton", {
+        Size = UDim2.fromOffset(50, 24),
+        Position = UDim2.new(1, -50, 0.5, -12),
+        BackgroundColor3 = THEME.Off,
+        BorderSizePixel = 0,
+        Font = THEME.FontBold,
+        TextSize = 11,
+        Text = "APPLY",
+        TextColor3 = THEME.Neon,
+        AutoButtonColor = false,
+        Parent = row,
+    }, {
+        New("UICorner", { CornerRadius = UDim.new(0, 5) }),
+        New("UIStroke", { Color = THEME.NeonDim, Thickness = 1, Transparency = 0.5 }),
+    })
+
+    local function updateDistance()
+        local txt = inputBox.Text
+        local num = tonumber(txt)
+        -- Fix: ensure it parses properly and doesn't default to 2000
+        if num and num > 0 then
+            ESP_MAX_DISTANCE = math.floor(num)
+            descLbl.Text = "Current: " .. ESP_MAX_DISTANCE .. " studs"
+            inputBox.Text = tostring(ESP_MAX_DISTANCE)
+        else
+            -- If invalid, revert to current valid distance
+            inputBox.Text = tostring(ESP_MAX_DISTANCE)
+        end
+    end
+
+    applyBtn.MouseButton1Click:Connect(updateDistance)
+    inputBox.FocusLost:Connect(function(enterPressed)
+        if enterPressed then updateDistance() end
+    end)
+end
+
+------------------------------------------------------------------------
+-- [6] SOUND SYSTEM
+------------------------------------------------------------------------
+local function ParentSound(s)
+    local ok = pcall(function() s.Parent = game:GetService("SoundService") end)
+    if not ok or s.Parent == nil then
+        pcall(function() s.Parent = Workspace.CurrentCamera end)
+    end
+    if s.Parent == nil then
+        pcall(function() s.Parent = localPlr:WaitForChild("PlayerGui") end)
+    end
+end
+
+local MusicSound = New("Sound", {
+    Name = "MatrixMusic",
+    SoundId = SOUND_MUSIC,
+    Looped = true,
+    Volume = 0.5,
+})
+ParentSound(MusicSound)
+task.defer(function()
+    task.wait(0.3)
+    pcall(function() MusicSound:Play() end)
+end)
+
+local ActSound = New("Sound", {
+    Name = "MatrixActivation",
+    SoundId = SOUND_ACT,
+    Looped = false,
+    Volume = 1,
+})
+ParentSound(ActSound)
+
+------------------------------------------------------------------------
+-- [7] ESP / CHAMS / TAG
+------------------------------------------------------------------------
+local Holder = New("Folder", { Name = "MatrixXRay_Holder", Parent = getGuiParent() })
+local PerPlayer = {}
+
+local function BuildTagBillboard(plr, head)
+    local bill = New("BillboardGui", {
+        Name = "MatrixTag_" .. plr.Name,
+        AlwaysOnTop = true,
+        Size = UDim2.fromOffset(168, 54),
+        StudsOffset = Vector3.new(0, 2.3, 0),
+        MaxDistance = 4000,
+        Adornee = head,
+        Parent = Holder,
+    })
+    New("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 14),
+        BackgroundTransparency = 1,
+        Font = THEME.FontBold,
+        TextSize = 11,
+        TextColor3 = THEME.Neon,
+        TextStrokeTransparency = 0.35,
+        Text = plr.DisplayName .. " [@" .. plr.Name .. "]",
+        Parent = bill,
+    })
+    local distLbl = New("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 10),
+        Position = UDim2.fromOffset(0, 14),
+        BackgroundTransparency = 1,
+        Font = THEME.Font,
+        TextSize = 8,
+        TextColor3 = THEME.NeonSoft,
+        TextStrokeTransparency = 0.5,
+        Text = "dist: --",
+        Parent = bill,
+    })
+    local toolLbl = New("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 10),
+        Position = UDim2.fromOffset(0, 24),
+        BackgroundTransparency = 1,
+        Font = THEME.Font,
+        TextSize = 8,
+        TextColor3 = THEME.TextDim,
+        TextStrokeTransparency = 0.5,
+        Text = "hand: empty",
+        Parent = bill,
+    })
+    local barBg = New("Frame", {
+        Size = UDim2.new(0.56, 0, 0, 4),
+        Position = UDim2.new(0.22, 0, 0, 36),
+        BackgroundColor3 = Color3.fromRGB(8, 20, 14),
+        BorderSizePixel = 0,
+        Parent = bill,
+    }, {
+        New("UICorner", { CornerRadius = UDim.new(1, 0) }),
+        New("UIStroke", { Color = THEME.NeonDim, Thickness = 1, Transparency = 0.35 }),
+    })
+    local barFill = New("Frame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundColor3 = THEME.Neon,
+        BorderSizePixel = 0,
+        Parent = barBg,
+    }, { New("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+    local hpLbl = New("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 9),
+        Position = UDim2.fromOffset(0, 42),
+        BackgroundTransparency = 1,
+        Font = THEME.Font,
+        TextSize = 8,
+        TextColor3 = THEME.TextDim,
+        TextStrokeTransparency = 0.5,
+        Text = "100/100",
+        Parent = bill,
+    })
+    return bill, barFill, distLbl, toolLbl, hpLbl
+end
+
+local function UpdateTagColors(plr)
+    local data = PerPlayer[plr]
+    if not data then return end
+    local bill = data.Billboard
+    if not bill then return end
+    local nameColor = State.NightMode and Color3.fromRGB(255, 60, 60) or THEME.Neon
+    local dimColor  = State.NightMode and Color3.fromRGB(255, 120, 120) or THEME.TextDim
+    local softColor = State.NightMode and Color3.fromRGB(255, 80, 80) or THEME.NeonSoft
+    for _, child in ipairs(bill:GetChildren()) do
+        if child:IsA("TextLabel") then
+            if child.Text:find("%[") then child.TextColor3 = nameColor
+            elseif child.Text:find("dist") then child.TextColor3 = softColor
+            elseif child.Text:find("hand:") then child.TextColor3 = dimColor
+            elseif child.Text:find("/") then child.TextColor3 = dimColor
+            end
+        end
+    end
+    if data.BarFill then
+        data.BarFill.BackgroundColor3 = State.NightMode and Color3.fromRGB(255, 60, 60) or THEME.Neon
+    end
+end
+
+local function SetupPlayer(plr)
+    if plr == localPlr then return end
+    if PerPlayer[plr] then
+        pcall(function() PerPlayer[plr].Highlight:Destroy() end)
+        pcall(function() PerPlayer[plr].Billboard:Destroy() end)
+        PerPlayer[plr] = nil
+    end
+    local char = plr.Character
+    if not char then return end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+    if not humanoid or not head then return end
+    local highlight = New("Highlight", {
+        Name = "MatrixHL_" .. plr.Name,
+        Adornee = char,
+        Parent = char,
+        Enabled = false,
+        FillTransparency = 1,
+        OutlineTransparency = 0,
+        OutlineColor = THEME.Neon,
+        FillColor = THEME.Neon,
+        DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+    })
+    local bill, barFill, distLbl, toolLbl, hpLbl = BuildTagBillboard(plr, head)
+    bill.Enabled = false
+    PerPlayer[plr] = {
+        Highlight = highlight, Billboard = bill, BarFill = barFill,
+        DistLbl = distLbl, ToolLbl = toolLbl, HpLbl = hpLbl,
+        Humanoid = humanoid, Char = char,
+    }
+    if State.NightMode then UpdateTagColors(plr) end
+end
+
+local function ForEachPlayerEntry(fn)
+    for plr, data in pairs(PerPlayer) do
+        if plr and plr.Parent then
+            local ok = pcall(fn, plr, data)
+            if not ok then PerPlayer[plr] = nil end
+        end
+    end
+end
+
+local function bindPlayer(plr)
+    if plr == localPlr then return end
+    plr.CharacterAdded:Connect(function()
+        task.wait(0.4)
+        SetupPlayer(plr)
+    end)
+    if plr.Character then task.spawn(SetupPlayer, plr) end
+end
+
+for _, p in ipairs(Players:GetPlayers()) do bindPlayer(p) end
+Players.PlayerAdded:Connect(function(p) bindPlayer(p) end)
+Players.PlayerRemoving:Connect(function(p)
+    if PerPlayer[p] then
+        pcall(function() PerPlayer[p].Highlight:Destroy() end)
+        pcall(function() PerPlayer[p].Billboard:Destroy() end)
+        PerPlayer[p] = nil
+    end
+end)
+
+------------------------------------------------------------------------
+-- [8] X-RAY & WALL
+------------------------------------------------------------------------
+local XRayCache = {}
+local WallCache = {}
+
+local function ApplyXRayPart(part, cache, amount)
+    if part:IsA("BasePart") and not part:IsA("Terrain") and not isCharPart(part) then
+        if cache[part] == nil then cache[part] = part.LocalTransparencyModifier end
+        part.LocalTransparencyModifier = amount
+    end
+end
+
+local function ClearCache(cache)
+    for part, oldVal in pairs(cache) do
+        if part and part.Parent then
+            pcall(function() part.LocalTransparencyModifier = oldVal or 0 end)
+        end
+        cache[part] = nil
+    end
+end
+
+function RefreshWorldTransparency()
+    if not State.XRay then ClearCache(XRayCache) end
+    if not State.Wall  then ClearCache(WallCache)  end
+    if not State.XRay and not State.Wall then return end
+
+    for _, inst in ipairs(Workspace:GetDescendants()) do
+        if inst:IsA("BasePart") and not inst:IsA("Terrain") and not isCharPart(inst) then
+            if State.XRay then ApplyXRayPart(inst, XRayCache, 0.60) end
+            if State.Wall and inst.Transparency == 0 then ApplyXRayPart(inst, WallCache, 0.35) end
+        end
+    end
+end
+
+Workspace.DescendantAdded:Connect(function(inst)
+    if inst:IsA("BasePart") and not isCharPart(inst) then
+        if State.XRay then ApplyXRayPart(inst, XRayCache, 0.60) end
+        if State.Wall and inst.Transparency == 0 then ApplyXRayPart(inst, WallCache, 0.35) end
+    end
+end)
+
+------------------------------------------------------------------------
+-- [9] GLASSES
+------------------------------------------------------------------------
+local Glasses = {
+    Container = nil, Root = nil, Weld = nil, Parts = {},
+    EyeCF = nil, ForeCF = nil, Busy = false,
+}
+
+local function DestroyGlasses()
+    if Glasses.Container then pcall(function() Glasses.Container:Destroy() end) end
+    Glasses.Container, Glasses.Root, Glasses.Weld = nil, nil, nil
+    Glasses.Parts = {}
+    Glasses.Busy = false
+end
+
+local function ProceduralVisor(head)
+    local W, H, D = head.Size.X, head.Size.Y, head.Size.Z
+    local model = Instance.new("Model")
+    model.Name = "MatrixVisor"
+    local lens = New("Part", {
+        Name = "Lens",
+        Size = Vector3.new(W * 0.96, H * 0.30, 0.12),
+        Color = THEME.Neon,
+        Material = Enum.Material.Neon,
+        Transparency = 0.12,
+        CanCollide = false, Anchored = false, Massless = true,
+        Parent = model,
+    })
+    local brow = New("Part", {
+        Name = "Brow",
+        Size = Vector3.new(W * 1.04, H * 0.07, 0.10),
+        Color = Color3.fromRGB(4, 14, 9),
+        Material = Enum.Material.SmoothPlastic,
+        CanCollide = false, Massless = true,
+        Parent = model,
+    })
+    New("Weld", { Part0 = lens, Part1 = brow, C0 = CFrame.new(0, H * 0.17, 0), Parent = brow })
+    for _, side in ipairs({ -1, 1 }) do
+        local arm = New("Part", {
+            Size = Vector3.new(0.07, 0.07, D * 0.85),
+            Color = Color3.fromRGB(4, 14, 9),
+            Material = Enum.Material.SmoothPlastic,
+            CanCollide = false, Massless = true,
+            Parent = model,
+        })
+        New("Weld", {
+            Part0 = lens, Part1 = arm,
+            C0 = CFrame.new(side * (W * 0.52), H * 0.08, D * 0.40),
+            Parent = arm,
+        })
+    end
+    model.PrimaryPart = lens
+    return model
+end
+
+local function TryAsset(char)
+    local ok, objs = pcall(function() return game:GetObjects(ASSET_GLASSES) end)
+    if not (ok and objs and objs[1]) then return nil, nil end
+    local item = objs[1]
+    local handle
+    if item:IsA("BasePart") then
+        handle = item
+    else
+        handle = item:FindFirstChild("Handle")
+        if not handle then
+            local ok2, res = pcall(function() return item:FindFirstChildWhichIsA("BasePart", true) end)
+            if ok2 then handle = res end
+        end
+    end
+    if not handle then pcall(function() item:Destroy() end) return nil, nil end
+    for _, d in ipairs(item:GetDescendants()) do
+        if d:IsA("Weld") or d:IsA("WeldConstraint") or d:IsA("AccessoryWeld") then
+            pcall(function() d:Destroy() end)
+        end
+    end
+    pcall(function()
+        handle.Anchored = false
+        handle.CanCollide = false
+        handle.Massless = true
+        handle.Color = THEME.Neon
+        handle.Material = Enum.Material.Neon
+        handle.Transparency = 0.08
+    end)
+    item.Parent = char
+    return item, handle
+end
+
+local function EquipGlasses()
+    DestroyGlasses()
+    local char = localPlr.Character
+    local head = char and char:FindFirstChild("Head")
+    if not head then return end
+    local container, root
+    local parts = {}
+    local item, handle = TryAsset(char)
+    if handle then
+        container, root = item, handle
+        parts = { handle }
+    else
+        local model = ProceduralVisor(head)
+        container, root = model, model.PrimaryPart
+        for _, d in ipairs(model:GetDescendants()) do
+            if d:IsA("BasePart") then table.insert(parts, d) end
+        end
+        model.Parent = char
+    end
+    if not root then return end
+    local eyeCF  = CFrame.new(0, head.Size.Y * 0.12, -(head.Size.Z * 0.25 + 0.03))
+    local foreCF = CFrame.new(0, head.Size.Y * 0.66, -(head.Size.Z * 0.02))
+    root.Anchored = false
+    local weld = Instance.new("Weld")
+    weld.Name   = "MatrixVisorWeld"
+    weld.Part0  = head
+    weld.Part1  = root
+    weld.C0     = State.Master and eyeCF or foreCF
+    weld.Parent = root
+    Glasses.Container = container
+    Glasses.Root      = root
+    Glasses.Weld      = weld
+    Glasses.Parts     = parts
+    Glasses.EyeCF     = eyeCF
+    Glasses.ForeCF    = foreCF
+    task.spawn(function()
+        for i = 1, 8 do
+            local a = i / 8
+            for _, p in ipairs(Glasses.Parts) do
+                pcall(function() p.Transparency = math.clamp(1 - a * 0.88, 0.1, 1) end)
+            end
+            task.wait(0.035)
+        end
+    end)
+end
+
+local function SlideGlasses(toEyes)
+    local weld, eye, fore = Glasses.Weld, Glasses.EyeCF, Glasses.ForeCF
+    if not weld or Glasses.Busy then return end
+    Glasses.Busy = true
+    if toEyes then
+        pcall(function() ActSound.TimePosition = 0; ActSound:Play() end)
+        local t1 = TweenSvc:Create(weld,
+            TweenInfo.new(0.55, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+            { C0 = eye * CFrame.new(0, -0.10, -0.02) })
+        t1:Play(); t1.Completed:Wait()
+        if Glasses.Weld ~= weld then Glasses.Busy = false return end
+        local t2 = TweenSvc:Create(weld,
+            TweenInfo.new(0.30, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
+            { C0 = eye })
+        t2:Play(); t2.Completed:Wait()
+    else
+        local t1 = TweenSvc:Create(weld,
+            TweenInfo.new(0.38, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+            { C0 = fore * CFrame.new(0, 0.06, 0) })
+        t1:Play(); t1.Completed:Wait()
+        if Glasses.Weld ~= weld then Glasses.Busy = false return end
+        local t2 = TweenSvc:Create(weld,
+            TweenInfo.new(0.16, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+            { C0 = fore })
+        t2:Play(); t2.Completed:Wait()
+    end
+    Glasses.Busy = false
+end
+
+localPlr.CharacterAdded:Connect(function()
+    State.XRay, State.Wall = false, false
+    ClearCache(XRayCache)
+    ClearCache(WallCache)
+    task.wait(0.6)
+    EquipGlasses()
+end)
+
+------------------------------------------------------------------------
+-- [10] TOGGLES + FEATURE LOGIC
+------------------------------------------------------------------------
+local Toggles = {}
+
+Toggles.Master = CreateToggle({
+    Key = "Master", Big = true, Icon = ">>",
+    Title = "X-RAY CODE (MASTER SWITCH)",
+    Desc  = "ON = glasses down + sound | OFF = up, everything turns off",
+    Callback = function(on)
+        if on then
+            if not Glasses.Weld then EquipGlasses() end
+            task.spawn(SlideGlasses, true)
+            Tween(StatusDot, TweenInfo.new(0.25), { BackgroundColor3 = THEME.Neon })
+        else
+            task.spawn(SlideGlasses, false)
+            Tween(StatusDot, TweenInfo.new(0.25), { BackgroundColor3 = THEME.Off })
+            for _, key in ipairs({ "XRay", "Wall", "ESP", "Chams", "TagESP" }) do
+                if State[key] and Toggles[key] then Toggles[key].Set(false) end
+            end
+        end
+    end,
+})
+
+Toggles.XRay = CreateToggle({
+    Key = "XRay", Icon = "X",
+    Title = "X-RAY WALL",
+    Desc  = "whole map 60% transparent — one time, no lag",
+    Callback = function() RefreshWorldTransparency() end,
+})
+
+Toggles.Wall = CreateToggle({
+    Key = "Wall", Icon = "W",
+    Title = "X-RAY SEE-THROUGH",
+    Desc  = "solid geometry 35% transparent — one time, no lag",
+    Callback = function() RefreshWorldTransparency() end,
+})
+
+Toggles.ESP = CreateToggle({
+    Key = "ESP", Icon = "E",
+    Title = "X-RAY ESP",
+    Desc  = "green box around players",
+    Callback = function(on)
+        ForEachPlayerEntry(function(_, d)
+            d.Highlight.Enabled = on or State.Chams
+            if State.Chams then
+                d.Highlight.FillTransparency = 0.55
+            else
+                d.Highlight.FillTransparency = on and 0.85 or 1
+            end
+        end)
+    end,
+})
+
+CreateDistanceSetting()
+
+Toggles.Chams = CreateToggle({
+    Key = "Chams", Icon = "C",
+    Title = "X-RAY ESP CHAMS",
+    Desc  = "solid green glow - pulsing animation",
+    Callback = function(on)
+        ForEachPlayerEntry(function(_, d)
+            d.Highlight.Enabled = on or State.ESP
+            if on then
+                d.Highlight.FillTransparency = 0.55
+            elseif State.ESP then
+                d.Highlight.FillTransparency = 0.85
+            else
+                d.Highlight.FillTransparency = 1
+            end
+        end)
+    end,
+})
+
+Toggles.TagESP = CreateToggle({
+    Key = "TagESP", Icon = "T",
+    Title = "X-RAY TAG ESP + HEALTH BAR",
+    Desc  = "small label: name + distance + item + thin health bar",
+    Callback = function(on)
+        ForEachPlayerEntry(function(_, d) d.Billboard.Enabled = on end)
+    end,
+})
+
+Toggles.NightMode = CreateToggle({
+    Key = "NightMode", Icon = "N",
+    Title = "NIGHT MODE",
+    Desc  = "Night vision: green environment, red players",
+    Callback = function(on) SetNightMode(on) end,
+})
+
+Toggles.Music = CreateToggle({
+    Key = "Music", Icon = "M",
+    Title = "HACKER MUSIC (PLAY / PAUSE)",
+    Desc  = "id 80831299890136 - starts on execute",
+    Callback = function(on)
+        if on then
+            pcall(function()
+                if MusicSound.IsPlaying then MusicSound:Resume() else MusicSound:Play() end
+            end)
+        else
+            pcall(function() MusicSound:Pause() end)
+        end
+    end,
+})
+
+Toggles.Music.Set(true, true)
+
+------------------------------------------------------------------------
+-- [10.5] NIGHT MODE
+------------------------------------------------------------------------
+local LightingService = game:GetService("Lighting")
+local originalNight = {
+    ClockTime      = LightingService.ClockTime,
+    Ambient        = LightingService.Ambient,
+    OutdoorAmbient = LightingService.OutdoorAmbient,
+    FogColor       = LightingService.FogColor,
+    FogEnd         = LightingService.FogEnd,
+    Brightness     = LightingService.Brightness,
+    GlobalShadows  = LightingService.GlobalShadows,
+}
+
+function SetNightMode(enabled)
+    State.NightMode = enabled
+    if enabled then
+        LightingService.ClockTime      = 0
+        LightingService.Ambient        = Color3.fromRGB(0, 100, 0)
+        LightingService.OutdoorAmbient = Color3.fromRGB(0, 100, 0)
+        LightingService.FogColor       = Color3.fromRGB(0, 120, 0)
+        LightingService.FogEnd         = 10000
+        LightingService.Brightness     = 2
+        LightingService.GlobalShadows  = false
+    else
+        LightingService.ClockTime      = originalNight.ClockTime
+        LightingService.Ambient        = originalNight.Ambient
+        LightingService.OutdoorAmbient = originalNight.OutdoorAmbient
+        LightingService.FogColor       = originalNight.FogColor
+        LightingService.FogEnd         = originalNight.FogEnd
+        LightingService.Brightness     = originalNight.Brightness
+        LightingService.GlobalShadows  = originalNight.GlobalShadows
+    end
+    ForEachPlayerEntry(function(plr, d)
+        UpdateTagColors(plr)
+        if State.NightMode then
+            d.Highlight.OutlineColor = Color3.fromRGB(255, 60, 60)
+            d.Highlight.FillColor    = Color3.fromRGB(255, 60, 60)
+        else
+            d.Highlight.OutlineColor = THEME.Neon
+            d.Highlight.FillColor    = THEME.Neon
+        end
+    end)
+end
+
+------------------------------------------------------------------------
+-- [11] HEARTBEAT
+------------------------------------------------------------------------
+local pulse = 0
+RunService.Heartbeat:Connect(function(dt)
+    pulse += dt
+    StrokeGrad.Rotation = (StrokeGrad.Rotation + dt * 60) % 360
+
+    if not (State.ESP or State.Chams or State.TagESP) then return end
+
+    local myRoot = localPlr.Character and localPlr.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return end
+
+    ForEachPlayerEntry(function(plr, d)
+        local char = d.Char
+        if not char or not char.Parent then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+
+        local dist      = (root.Position - myRoot.Position).Magnitude
+        -- Fixed: uses the exact ESP_MAX_DISTANCE from the input
+        local withinESP = dist <= ESP_MAX_DISTANCE
+
+        if State.ESP or State.Chams then
+            d.Highlight.Enabled = withinESP and (State.ESP or State.Chams)
+        end
+
+        if State.Chams and withinESP then
+            local s = 0.5 + 0.5 * math.sin(pulse * 3)
+            if State.NightMode then
+                d.Highlight.FillColor    = Color3.fromRGB(255, 60 + 55 * s, 60)
+                d.Highlight.OutlineColor = Color3.fromRGB(255, 80, 80)
+            else
+                d.Highlight.FillColor    = Color3.fromRGB(0, 200 + 55 * s, 110 + 60 * s)
+                d.Highlight.OutlineColor = THEME.NeonSoft
+            end
+        end
+
+        if State.TagESP and withinESP then
+            d.DistLbl.Text = "dist: " .. round(dist) .. " studs"
+            local tool = char:FindFirstChildOfClass("Tool")
+            d.ToolLbl.Text = "hand: " .. (tool and tool.Name or "empty")
+            local hum = d.Humanoid
+            if hum and hum.MaxHealth > 0 then
+                local pct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                d.BarFill.Size = UDim2.new(pct, 0, 1, 0)
+                if State.NightMode then
+                    d.BarFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+                else
+                    d.BarFill.BackgroundColor3 = Color3.fromRGB(
+                        round(255 * (1 - pct)), round(255 * pct), 110)
+                end
+                d.HpLbl.Text = round(hum.Health) .. "/" .. round(hum.MaxHealth)
+            end
+        end
+    end)
+end)
+
+------------------------------------------------------------------------
+-- [12] MINIMIZE / RESTORE
+------------------------------------------------------------------------
+local function NewBall()
+    local b = New("TextButton", {
+        Name = "MatrixBall",
+        Size = UDim2.fromOffset(52, 52),
+        Position = UDim2.new(0.5, -26, 0.18, 0),
+        BackgroundColor3 = THEME.BgPanel,
+        Font = THEME.FontBold,
+        TextSize = 26,
+        Text = "+",
+        TextColor3 = THEME.Neon,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Visible = false,
+        Parent = ScreenGui,
+    }, {
+        New("UICorner", { CornerRadius = UDim.new(1, 0) }),
+        New("UIStroke", { Color = THEME.Neon, Thickness = 2, Transparency = 0.05 }),
+    })
+    New("UIGradient", {
+        Rotation = 45,
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 40, 26)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(2, 10, 6)),
+        }),
+        Parent = b,
+    })
+    return b
+end
+
+local BallBtn = NewBall()
+MakeDraggable(BallBtn, BallBtn)
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        if BallBtn.Visible then
+            Tween(BallBtn, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { TextSize = 30 })
+            task.wait(0.9)
+            Tween(BallBtn, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { TextSize = 24 })
+            task.wait(0.9)
+        else
+            task.wait(0.25)
+        end
+    end
+end)
+
+local openedInfo  = TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local closingInfo = TweenInfo.new(0.30, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+local function AnimateShow()
+    if not State.Minimized then return end
+    State.Minimized = false
+    BallBtn.Visible = false
+    Main.Visible = true
+    Main.Size = UDim2.fromOffset(MAIN_W * 0.25, 40)
+    Main.BackgroundTransparency = 1
+    MainStroke.Transparency = 1
+    Tween(Main, openedInfo, { Size = UDim2.fromOffset(MAIN_W, MAIN_H), BackgroundTransparency = 0.06 })
+    Tween(MainStroke, TweenInfo.new(0.5), { Transparency = 0.15 })
+end
+
+local function AnimateHide()
+    if State.Minimized then return end
+    State.Minimized = true
+    local tw = Tween(Main, closingInfo, { Size = UDim2.fromOffset(110, 36), BackgroundTransparency = 1 })
+    Tween(MainStroke, TweenInfo.new(0.25), { Transparency = 1 })
+    tw.Completed:Connect(function()
+        if not State.Minimized then return end
+        Main.Visible = false
+        BallBtn.Visible = true
+        BallBtn.Size = UDim2.fromOffset(0, 0)
+        Tween(BallBtn, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+            { Size = UDim2.fromOffset(52, 52) })
+    end)
+end
+
+MinBtn.MouseButton1Click:Connect(AnimateHide)
+BallBtn.MouseButton1Click:Connect(AnimateShow)
+
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        if State.Minimized or not Main.Visible then AnimateShow() else AnimateHide() end
+    end
+end)
+
+MakeDraggable(Header, Main)
+
+task.spawn(function()
+    local function anyActive()
+        return State.Master or State.XRay or State.Wall or State.ESP or State.Chams or State.TagESP
+    end
+    while ScreenGui.Parent do
+        if Main.Visible and anyActive() then
+            local p = New("Frame", {
+                Size = UDim2.new(0, 2, 0, math.random(12, 28)),
+                Position = UDim2.new(math.random(), 0, 1, -6),
+                BackgroundColor3 = THEME.Neon,
+                BackgroundTransparency = 0.15,
+                BorderSizePixel = 0,
+                Parent = Main,
+            })
+            New("UICorner", { CornerRadius = UDim.new(1, 0), Parent = p })
+            Tween(p, TweenInfo.new(1.3, Enum.EasingStyle.Linear), {
+                Position = p.Position - UDim2.fromOffset(0, 130),
+                BackgroundTransparency = 1,
+            })
+            task.delay(1.4, function() pcall(function() p:Destroy() end) end)
+        end
+        task.wait(0.09)
+    end
+end)
+
+------------------------------------------------------------------------
+-- [13] CLEANUP + START
+------------------------------------------------------------------------
+local function Cleanup()
+    pcall(function() ScreenGui:Destroy() end)
+    pcall(function() Holder:Destroy() end)
+    pcall(function() MusicSound:Destroy() end)
+    pcall(function() ActSound:Destroy() end)
+    ClearCache(XRayCache)
+    ClearCache(WallCache)
+    DestroyGlasses()
+    if State.NightMode then SetNightMode(false) end
+end
+if typeof(getgenv) == "function" then
+    getgenv().MATRIX_XRAY_CLEANUP = Cleanup
+end
+
+pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "MATRIX X-RAY v2.1",
+        Text  = "Glasses down, music playing! X-RAY toggle = one time, no lag.",
+        Duration = 6,
+    })
+end)
+
+print([[
+====================================================
+  MATRIX X-RAY v2.1  ->  ACTIVE
+  [X-RAY / WALL] one-time application - no lag
+  [ESP DISTANCE] change via D row
+  [RightShift]   toggle GUI
+  [NIGHT MODE]   green environment, red players
+====================================================
+]])
+
+Main.Size = UDim2.fromOffset(MAIN_W * 0.3, 40)
+Main.BackgroundTransparency = 1
+task.defer(function()
+    Tween(Main, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.fromOffset(MAIN_W, MAIN_H),
+        BackgroundTransparency = 0.06,
+    })
+    local char = localPlr.Character or localPlr.CharacterAdded:Wait()
+    if char and char:FindFirstChild("Head") then
+        EquipGlasses()
+    else
+        task.spawn(function()
+            local c = localPlr.CharacterAdded:Wait()
+            c:WaitForChild("Head", 5)
+            task.wait(0.4)
+            EquipGlasses()
+        end)
+    end
+end)

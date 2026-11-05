@@ -1,4 +1,4 @@
--- [HITBOX + HORROR + LAUNCHER] One script, no loadstring for hitbox
+-- [HITBOX + HORROR + LAUNCHER] Auto-Attach on Join/Respawn (Hitbox Forced ON)
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -9,18 +9,23 @@ local Workspace = game:GetService("Workspace")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
+-- FORCE HITBOX ON BY DEFAULT
+local NPC_HITBOX_ON = true
+local PLAYER_HITBOX_ON = true
+local ESP_ON = true
+local PLAYER_ESP_ON = true
+
 for _,v in pairs(pg:GetChildren()) do
 	if v.Name=="FuturisticHitbox" or v.Name=="HitboxLauncher"
 	or v.Name=="LoadingSpinner" then v:Destroy() end
 end
 
-local NPC_HITBOX_ON=false; local PLAYER_HITBOX_ON=false
 local NPC_MELEE_ON=false;   local PLAYER_MELEE_ON=false
 local NPC_THREAT_COLOR=true; local PLAYER_THREAT_COLOR=true
 local AUTO_SIZE=false;       local REMOVE_ON_DEATH=true
 local DEATH_WHISPER=false;   local HITBOX_PULSE=false
-local AGGRO_SOUND=false;     local ESP_ON=false
-local PLAYER_ESP_ON=false;   local PLAYER_HEALTH_COLOR=false
+local AGGRO_SOUND=false;     
+local PLAYER_HEALTH_COLOR=false
 local ESP_COLOR=Color3.fromRGB(0,255,0); local ESP_STYLE="Faint"
 local INDICATOR=false;       local RED_SYMBOL=false
 local TEAM_CHECK=true;       local FRIEND_CHECK=true
@@ -239,7 +244,6 @@ local function setupHitbox()
 	end
 	mkDrag(titleBar,main); mkDrag(eye,eye)
 
-	-- TOOLTIP — FIX: toggle on same button, X close button, no UIS.InputBegan
 	local tooltip=Instance.new("Frame")
 	tooltip.Size=UDim2.new(0,220,0,80); tooltip.BackgroundColor3=Color3.fromRGB(15,18,30)
 	tooltip.BorderSizePixel=0; tooltip.Visible=false; tooltip.ZIndex=20; tooltip.Parent=gui
@@ -252,7 +256,6 @@ local function setupHitbox()
 	ttText.Font=Enum.Font.Gotham; ttText.TextSize=11
 	ttText.TextColor3=Color3.fromRGB(180,210,255); ttText.ZIndex=21; ttText.Parent=tooltip
 
-	-- X close button on tooltip
 	local ttClose=Instance.new("TextButton")
 	ttClose.Size=UDim2.new(0,18,0,18); ttClose.Position=UDim2.new(1,-20,0,3)
 	ttClose.BackgroundColor3=Color3.fromRGB(80,20,20); ttClose.Text="×"
@@ -262,13 +265,11 @@ local function setupHitbox()
 
 	local lastTipBtn=nil
 	local function showTip(text,btn)
-		-- toggle: same button clicked again = hide
 		if tooltip.Visible and lastTipBtn==btn then
 			tooltip.Visible=false; lastTipBtn=nil; return
 		end
 		ttText.Text=text
 		local ap=btn.AbsolutePosition
-		-- keep tooltip on screen
 		local xPos=ap.X+btn.AbsoluteSize.X+6
 		local yPos=ap.Y
 		tooltip.Position=UDim2.new(0,xPos,0,yPos)
@@ -392,7 +393,7 @@ local function setupHitbox()
 	local rageStr=Instance.new("UIStroke"); rageStr.Color=Color3.fromRGB(255,80,80); rageStr.Thickness=1.2; rageStr.Parent=rageBtn
 	local npcStatus=Instance.new("TextButton")
 	npcStatus.Size=UDim2.new(0,160,0,34); npcStatus.Position=UDim2.new(0.5,-80,0,486)
-	npcStatus.BackgroundColor3=Color3.fromRGB(30,40,60); npcStatus.Text="NPC Hitbox: OFF"
+	npcStatus.BackgroundColor3=Color3.fromRGB(0,160,200); npcStatus.Text="NPC Hitbox: ON"
 	npcStatus.Font=Enum.Font.GothamBold; npcStatus.TextSize=13
 	npcStatus.TextColor3=Color3.new(1,1,1); npcStatus.BorderSizePixel=0; npcStatus.Parent=hitboxPage
 	Instance.new("UICorner",npcStatus).CornerRadius=UDim.new(0,8)
@@ -401,7 +402,7 @@ local function setupHitbox()
 	sLbl("— NPC ESP —",8,espPage)
 	local espStatus=Instance.new("TextButton")
 	espStatus.Size=UDim2.new(0,160,0,34); espStatus.Position=UDim2.new(0.5,-80,0,34)
-	espStatus.BackgroundColor3=Color3.fromRGB(30,40,60); espStatus.Text="NPC ESP: OFF"
+	espStatus.BackgroundColor3=Color3.fromRGB(0,160,200); espStatus.Text="NPC ESP: ON"
 	espStatus.Font=Enum.Font.GothamBold; espStatus.TextSize=13
 	espStatus.TextColor3=Color3.new(1,1,1); espStatus.BorderSizePixel=0; espStatus.Parent=espPage
 	Instance.new("UICorner",espStatus).CornerRadius=UDim.new(0,8)
@@ -415,7 +416,7 @@ local function setupHitbox()
 	sLbl("— Player ESP —",208,espPage,Color3.fromRGB(255,180,60))
 	local pEspStatus=Instance.new("TextButton")
 	pEspStatus.Size=UDim2.new(0,160,0,34); pEspStatus.Position=UDim2.new(0.5,-80,0,234)
-	pEspStatus.BackgroundColor3=Color3.fromRGB(30,40,60); pEspStatus.Text="Player ESP: OFF"
+	pEspStatus.BackgroundColor3=Color3.fromRGB(0,160,200); pEspStatus.Text="Player ESP: ON"
 	pEspStatus.Font=Enum.Font.GothamBold; pEspStatus.TextSize=13
 	pEspStatus.TextColor3=Color3.new(1,1,1); pEspStatus.BorderSizePixel=0; pEspStatus.Parent=espPage
 	Instance.new("UICorner",pEspStatus).CornerRadius=UDim.new(0,8)
@@ -461,7 +462,7 @@ local function setupHitbox()
 	local pTransBx=mkBox("Transparency",390,playerPage,"0.55")
 	local pStatus=Instance.new("TextButton")
 	pStatus.Size=UDim2.new(0,160,0,34); pStatus.Position=UDim2.new(0.5,-80,0,440)
-	pStatus.BackgroundColor3=Color3.fromRGB(30,40,60); pStatus.Text="Player Hitbox: OFF"
+	pStatus.BackgroundColor3=Color3.fromRGB(0,160,200); pStatus.Text="Player Hitbox: ON"
 	pStatus.Font=Enum.Font.GothamBold; pStatus.TextSize=13
 	pStatus.TextColor3=Color3.new(1,1,1); pStatus.BorderSizePixel=0; pStatus.Parent=playerPage
 	Instance.new("UICorner",pStatus).CornerRadius=UDim.new(0,8)

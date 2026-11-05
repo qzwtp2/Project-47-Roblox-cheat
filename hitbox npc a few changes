@@ -1,4 +1,4 @@
--- [HITBOX + HORROR + LAUNCHER] Auto-Attach on Join/Respawn (Hitbox Forced ON)
+-- [HITBOX + HORROR + LAUNCHER] Auto-Attach on Join/Respawn (Hitbox OFF by Default)
 
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
@@ -9,11 +9,10 @@ local Workspace = game:GetService("Workspace")
 local lp = Players.LocalPlayer
 local pg = lp:WaitForChild("PlayerGui")
 
--- FORCE HITBOX ON BY DEFAULT
-local NPC_HITBOX_ON = true
-local PLAYER_HITBOX_ON = true
-local ESP_ON = true
-local PLAYER_ESP_ON = true
+local NPC_HITBOX_ON = false
+local PLAYER_HITBOX_ON = false
+local ESP_ON = false
+local PLAYER_ESP_ON = false
 
 for _,v in pairs(pg:GetChildren()) do
 	if v.Name=="FuturisticHitbox" or v.Name=="HitboxLauncher"
@@ -391,21 +390,26 @@ local function setupHitbox()
 	rageBtn.TextColor3=Color3.new(1,1,1); rageBtn.BorderSizePixel=0; rageBtn.Parent=hitboxPage
 	Instance.new("UICorner",rageBtn).CornerRadius=UDim.new(0,8)
 	local rageStr=Instance.new("UIStroke"); rageStr.Color=Color3.fromRGB(255,80,80); rageStr.Thickness=1.2; rageStr.Parent=rageBtn
+
+	-- NPC hitbox status button — starts OFF
 	local npcStatus=Instance.new("TextButton")
 	npcStatus.Size=UDim2.new(0,160,0,34); npcStatus.Position=UDim2.new(0.5,-80,0,486)
-	npcStatus.BackgroundColor3=Color3.fromRGB(0,160,200); npcStatus.Text="NPC Hitbox: ON"
+	npcStatus.BackgroundColor3=Color3.fromRGB(30,40,60); npcStatus.Text="NPC Hitbox: OFF"
 	npcStatus.Font=Enum.Font.GothamBold; npcStatus.TextSize=13
 	npcStatus.TextColor3=Color3.new(1,1,1); npcStatus.BorderSizePixel=0; npcStatus.Parent=hitboxPage
 	Instance.new("UICorner",npcStatus).CornerRadius=UDim.new(0,8)
 
 	-- ESP PAGE
 	sLbl("— NPC ESP —",8,espPage)
+
+	-- NPC ESP status button — starts OFF
 	local espStatus=Instance.new("TextButton")
 	espStatus.Size=UDim2.new(0,160,0,34); espStatus.Position=UDim2.new(0.5,-80,0,34)
-	espStatus.BackgroundColor3=Color3.fromRGB(0,160,200); espStatus.Text="NPC ESP: ON"
+	espStatus.BackgroundColor3=Color3.fromRGB(30,40,60); espStatus.Text="NPC ESP: OFF"
 	espStatus.Font=Enum.Font.GothamBold; espStatus.TextSize=13
 	espStatus.TextColor3=Color3.new(1,1,1); espStatus.BorderSizePixel=0; espStatus.Parent=espPage
 	Instance.new("UICorner",espStatus).CornerRadius=UDim.new(0,8)
+
 	sLbl("Color",78,espPage,Color3.fromRGB(160,200,255))
 	local redESP=mkClr("Red",Color3.fromRGB(230,60,60),4,100,espPage)
 	local blueESP=mkClr("Blue",Color3.fromRGB(60,130,255),82,100,espPage)
@@ -414,12 +418,15 @@ local function setupHitbox()
 	local solidBtn=mkClr("Solid",Color3.fromRGB(70,70,90),4,164,espPage)
 	local faintBtn=mkClr("Faint",Color3.fromRGB(0,180,100),82,164,espPage)
 	sLbl("— Player ESP —",208,espPage,Color3.fromRGB(255,180,60))
+
+	-- Player ESP status button — starts OFF
 	local pEspStatus=Instance.new("TextButton")
 	pEspStatus.Size=UDim2.new(0,160,0,34); pEspStatus.Position=UDim2.new(0.5,-80,0,234)
-	pEspStatus.BackgroundColor3=Color3.fromRGB(0,160,200); pEspStatus.Text="Player ESP: ON"
+	pEspStatus.BackgroundColor3=Color3.fromRGB(30,40,60); pEspStatus.Text="Player ESP: OFF"
 	pEspStatus.Font=Enum.Font.GothamBold; pEspStatus.TextSize=13
 	pEspStatus.TextColor3=Color3.new(1,1,1); pEspStatus.BorderSizePixel=0; pEspStatus.Parent=espPage
 	Instance.new("UICorner",pEspStatus).CornerRadius=UDim.new(0,8)
+
 	local hpNote=Instance.new("TextLabel"); hpNote.Size=UDim2.new(1,-8,0,20); hpNote.Position=UDim2.new(0,4,0,276)
 	hpNote.BackgroundTransparency=1; hpNote.Text="Color: green=full HP → yellow → red=low HP"
 	hpNote.Font=Enum.Font.Gotham; hpNote.TextSize=10; hpNote.TextColor3=Color3.fromRGB(130,140,170)
@@ -460,9 +467,11 @@ local function setupHitbox()
 	local pHeadBx=mkBox("Head Size",306,playerPage,"4")
 	local pBodyBx=mkBox("Body Size",348,playerPage,"7")
 	local pTransBx=mkBox("Transparency",390,playerPage,"0.55")
+
+	-- Player hitbox status button — starts OFF
 	local pStatus=Instance.new("TextButton")
 	pStatus.Size=UDim2.new(0,160,0,34); pStatus.Position=UDim2.new(0.5,-80,0,440)
-	pStatus.BackgroundColor3=Color3.fromRGB(0,160,200); pStatus.Text="Player Hitbox: ON"
+	pStatus.BackgroundColor3=Color3.fromRGB(30,40,60); pStatus.Text="Player Hitbox: OFF"
 	pStatus.Font=Enum.Font.GothamBold; pStatus.TextSize=13
 	pStatus.TextColor3=Color3.new(1,1,1); pStatus.BorderSizePixel=0; pStatus.Parent=playerPage
 	Instance.new("UICorner",pStatus).CornerRadius=UDim.new(0,8)

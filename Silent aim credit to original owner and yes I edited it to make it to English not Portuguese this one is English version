@@ -1,24 +1,6 @@
 --[[
-    UNIVERSAL PRO v4.3 — DEEP FREEZE FIX BUILD
-    Root causes of freeze addressed here:
-    1. IsNPC() was called inline during cache scan — heavy string ops on every model every frame
-    2. ESP updateESP ran on RenderStepped with GetExtentsSize() every frame
-    3. scanWorkspace blocked thread — GetDescendants on load with no yield
-    4. UpdateCaches had 200-entry yield gap (too wide)
-    5. Obsidian UI HttpGets (3 of them) ran synchronously before script could continue
-    6. BypassAdonis iterated GetDescendants synchronously on spawn
-    7. Anti-kick pcall fired on every spawn tick
-
-    Fixes:
-    - IsNPC result cached per-model (NPC_Identity_Cache), never rechecked unless model is new
-    - ESP moved to Heartbeat with 12fps cap + GetExtentsSize cached per model (2s TTL)
-    - scanWorkspace fully async with yield every 20 models
-    - UpdateCaches yields every 5 entries
-    - Obsidian UI loads in task.spawn (non-blocking)
-    - BypassAdonis GetDescendants scan yields every 50
-    - AntiKick interval raised to 90s
-    - IsFriend cached per UserId (no repeated API calls)
-    - RaycastParams reused (not reconstructed every call)
+    UNIVERSAL PRO v4.3 — SILENT AIM + BYPASS BUILD
+    ESP stripped. Silent Aim + Bypass & Extra + Save only.
 ]]
 
 --// ==================================================
@@ -45,7 +27,6 @@ _G.ShowHitChance        = false
 _G.HighlightTarget      = false
 _G.HighlightNPCColor    = Color3.fromRGB(255, 50, 50)
 _G.HighlightPlayerColor = Color3.fromRGB(50, 150, 255)
-_G.DebugNPCs            = false
 _G.AggressiveNPCDetection = false
 _G.TargetPriority       = "Distance"
 _G.StickyAim            = true
@@ -54,17 +35,6 @@ _G.FriendCheck          = true
 _G.AdonisBypass         = true
 _G.EnableDistanceLimit  = true
 _G.MaxAimDistance       = 500
-
-getgenv().ESP_Config = {
-    Enabled=false, ShowPlayers=true, ShowNPCs=true, TeamCheck=true, DeadCheck=true,
-    MaxDistance=2500, NameTextSize=16, DistanceTextSize=14, InventoryTextSize=13,
-    HPBarWidth=60, HPBarHeight=6,
-    ShowBox=false, ShowLine=false, ShowStick=false, ShowName=false,
-    ShowDistance=false, ShowHPBar=false, ShowEquippedItem=false, ShowInventory=false,
-    UseTeamColor=true,
-    EnemyColor=Color3.fromRGB(255,80,80), AllyColor=Color3.fromRGB(80,255,80),
-    LineColor=Color3.fromRGB(255,255,0), StickColor=Color3.fromRGB(255,255,255)
-}
 
 --// ==================================================
 --// 2. SERVICES
@@ -77,33 +47,14 @@ local LocalPlayer       = Players.LocalPlayer
 local Mouse             = LocalPlayer:GetMouse()
 
 --// ==================================================
---// 3. IDENTITY & FRIENDSHIP CACHES (run-once per model)
+--// 3. CACHES
 --// ==================================================
--- NPC_Identity_Cache[model] = true/false  (never recomputed after first check)
 local NPC_Identity_Cache = {}
-local Friend_Cache       = {}  -- [userId] = true/false
-local Size_Cache         = {}
-local Size_Cache_Age     = {}
-local SIZE_TTL           = 2
+local Friend_Cache       = {}
 
-local function getCachedSize(model)
-    local now = tick()
-    if not Size_Cache_Age[model] or (now - Size_Cache_Age[model]) > SIZE_TTL then
-        local ok, sz = pcall(function() return model:GetExtentsSize() end)
-        Size_Cache[model]     = ok and sz or Vector3.new(4,6,4)
-        Size_Cache_Age[model] = now
-    end
-    return Size_Cache[model]
-end
-
--- Reusable RaycastParams objects (avoid GC pressure from creating per-frame)
 local AimRayParams = RaycastParams.new()
 AimRayParams.FilterType = Enum.RaycastFilterType.Blacklist
 AimRayParams.IgnoreWater = true
-
-local ESPRayParams = RaycastParams.new()
-ESPRayParams.FilterType = Enum.RaycastFilterType.Blacklist
-ESPRayParams.IgnoreWater = true
 
 --// ==================================================
 --// 4. ANTI-KICK
@@ -134,30 +85,25 @@ task.spawn(function()
 end)
 
 --// ==================================================
---// 5. ADONIS BYPASS (yielded GetDescendants scan)
+--// 5. ADONIS BYPASS
 --// ==================================================
 local function BypassAdonis()
     if not _G.AdonisBypass then return end
     local RS = game:GetService("ReplicatedStorage")
     local detected = false
-
-    -- yield-safe scan
     local counter = 0
     for _, obj in pairs(game:GetDescendants()) do
         counter = counter + 1
         if counter % 50 == 0 then task.wait() end
         if obj.Name == "Adonis" or obj.Name == "AntiCheat" then detected = true; break end
     end
-
     if not detected then
         for _, n in pairs({"Adonis_Remote","Adonis_AntiCheat","Adonis_Check","Adonis_Validate","Adonis_Log","Adonis_Event"}) do
             if RS:FindFirstChild(n) then detected = true; break end
         end
     end
-
     if not detected then return end
     print("[UniversalPro] Adonis detected, applying bypass...")
-
     local mt = getrawmetatable(game)
     local oldNC = mt.__namecall
     setreadonly(mt, false)
@@ -170,7 +116,6 @@ local function BypassAdonis()
         return oldNC(self, ...)
     end)
     setreadonly(mt, true)
-
     task.spawn(function()
         while task.wait(5) do
             pcall(function()
@@ -205,10 +150,9 @@ local LastCacheUpdate    = 0
 local CacheUpdateInterval= 2
 local oldNamecall        = nil
 local oldIndex           = nil
-local ESP_Objects        = {}
 
 --// ==================================================
---// 7. NPC TAG LIST (used once per model, cached)
+--// 7. NPC TAG LIST
 --// ==================================================
 local NPCTags = {
     "npc","enemy","enemies","hostile","bot","mob","monster","zombie","creature",
@@ -232,63 +176,37 @@ local function IsPlayer(character)
     return Players:GetPlayerFromCharacter(character) ~= nil
 end
 
--- Cached NPC check — heavy string work only runs once per model lifetime
 local function IsNPC(character)
-    if NPC_Identity_Cache[character] ~= nil then
-        return NPC_Identity_Cache[character]
-    end
-
-    if not character or not character:IsA("Model") then
-        NPC_Identity_Cache[character] = false; return false
-    end
-    if IsPlayer(character) then
-        NPC_Identity_Cache[character] = false; return false
-    end
-
+    if NPC_Identity_Cache[character] ~= nil then return NPC_Identity_Cache[character] end
+    if not character or not character:IsA("Model") then NPC_Identity_Cache[character]=false; return false end
+    if IsPlayer(character) then NPC_Identity_Cache[character]=false; return false end
     local hum  = character:FindFirstChildOfClass("Humanoid")
     local head = character:FindFirstChild("Head")
     local hrp  = character:FindFirstChild("HumanoidRootPart")
-    if not hum or not head or not hrp then
-        NPC_Identity_Cache[character] = false; return false
-    end
-
-    if _G.AggressiveNPCDetection then
-        NPC_Identity_Cache[character] = true; return true
-    end
-
+    if not hum or not head or not hrp then NPC_Identity_Cache[character]=false; return false end
+    if _G.AggressiveNPCDetection then NPC_Identity_Cache[character]=true; return true end
     local charName = character.Name:lower()
     for _, tag in pairs(NPCTags) do
-        if charName:find(tag, 1, true) then
-            NPC_Identity_Cache[character] = true; return true
-        end
+        if charName:find(tag, 1, true) then NPC_Identity_Cache[character]=true; return true end
     end
-
     for _, fn in pairs(NPCFolderNames) do
         local f = workspace:FindFirstChild(fn)
-        if f and character:IsDescendantOf(f) then
-            NPC_Identity_Cache[character] = true; return true
-        end
+        if f and character:IsDescendantOf(f) then NPC_Identity_Cache[character]=true; return true end
     end
-
     for _, ind in pairs({"NPC","IsNPC","IsEnemy","Hostile","Enemy","IsBot"}) do
         local v = character:FindFirstChild(ind)
         if v then
             if v:IsA("BoolValue") and v.Value then NPC_Identity_Cache[character]=true; return true end
             if v:IsA("StringValue") then
                 local vl = v.Value:lower()
-                if vl=="enemy" or vl=="hostile" or vl=="npc" or vl=="bot" then
-                    NPC_Identity_Cache[character]=true; return true
-                end
+                if vl=="enemy" or vl=="hostile" or vl=="npc" or vl=="bot" then NPC_Identity_Cache[character]=true; return true end
             end
         end
     end
-
     for _, tag in pairs(CollectionService:GetTags(character)) do
         local tl = tag:lower()
         for _, nt in pairs(NPCTags) do if tl:find(nt,1,true) then NPC_Identity_Cache[character]=true; return true end end
     end
-
-    -- default: if it has humanoid+head+hrp and isn't a player, treat as NPC
     NPC_Identity_Cache[character] = true
     return true
 end
@@ -304,7 +222,6 @@ local function IsDead(character)
     return false
 end
 
--- Cached friend check — no repeated API calls for same userId
 local function IsFriend(player)
     if not player then return false end
     local uid = player.UserId
@@ -396,17 +313,13 @@ local function UpdateHighlight()
 end
 
 --// ==================================================
---// 9. CACHE UPDATE (yields every 5)
+--// 9. CACHE UPDATE
 --// ==================================================
 local function UpdateCaches()
     local now = tick()
     if now - LastCacheUpdate < CacheUpdateInterval then return end
     LastCacheUpdate = now
-
-    local tempNPC    = {}
-    local tempPlayer = {}
-    local counter    = 0
-
+    local tempNPC = {}; local tempPlayer = {}; local counter = 0
     local function tryAdd(model)
         counter = counter + 1
         if counter % 5 == 0 then task.wait() end
@@ -421,28 +334,16 @@ local function UpdateCaches()
             tempNPC[model] = {Model=model, HRP=hrp, Humanoid=hum, IsNPC=true}
         end
     end
-
-    -- fast pass: workspace direct children
     for _, child in pairs(workspace:GetChildren()) do tryAdd(child) end
-
-    -- NPC folders
     for _, fn in pairs(NPCFolderNames) do
         local folder = workspace:FindFirstChild(fn)
-        if folder then
-            for _, child in pairs(folder:GetDescendants()) do
-                if child:IsA("Model") then tryAdd(child) end
-            end
-        end
+        if folder then for _, child in pairs(folder:GetDescendants()) do if child:IsA("Model") then tryAdd(child) end end end
     end
-
-    -- aggressive: full scan (only when enabled)
     if _G.AggressiveNPCDetection then
         for _, d in pairs(workspace:GetDescendants()) do
             if d:IsA("Model") and not tempNPC[d] and not tempPlayer[d] then tryAdd(d) end
         end
     end
-
-    -- always add players from Players service (most reliable)
     for _, plr in pairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then
             local char = plr.Character
@@ -453,9 +354,7 @@ local function UpdateCaches()
             end
         end
     end
-
-    NPCCache    = tempNPC
-    PlayerCache = tempPlayer
+    NPCCache = tempNPC; PlayerCache = tempPlayer
 end
 
 --// ==================================================
@@ -492,19 +391,16 @@ end
 local function GetTarget()
     if not LocalPlayer.Character then TargetInRange=false; TargetPart=nil; return nil end
     UpdateCaches()
-
     if _G.StickyAim and CurrentTarget then
         if ValidateCurrentTarget() then TargetInRange=true; return CurrentTarget
         else CurrentTarget=nil; TargetPart=nil end
     end
-
     local bestScore = math.huge
     local closestPart, closestTgt = nil, nil
     local sc = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
     local localRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     TargetInRange=false; TargetPart=nil
     if not localRoot then return nil end
-
     local function ProcessTarget(data, isPlayer)
         local hrp = data.HRP; local hum = data.Humanoid
         if not hrp or not hum then return end
@@ -537,10 +433,8 @@ local function GetTarget()
             if score < bestScore then bestScore=score; closestPart=tp; closestTgt=data.Model end
         end
     end
-
     if _G.TargetMode=="NPCs" or _G.TargetMode=="Both" then for _,d in pairs(NPCCache) do ProcessTarget(d,false) end end
     if _G.TargetMode=="Players" or _G.TargetMode=="Both" then for _,d in pairs(PlayerCache) do ProcessTarget(d,true) end end
-
     TargetPart = closestPart
     return closestTgt
 end
@@ -582,165 +476,7 @@ local function UpdateTargetInfo()
 end
 
 --// ==================================================
---// 11. ESP (Heartbeat throttled to 12fps)
---// ==================================================
-local function newDrawing(t)
-    local obj = Drawing.new(t); obj.Visible=false; obj.ZIndex=2; return obj
-end
-local function setVis(parts, v)
-    for _,obj in pairs(parts) do if obj.Visible~=v then obj.Visible=v end end
-end
-local function getPlayerESP(model) return Players:GetPlayerFromCharacter(model) end
-local function getEquippedTool(model)
-    for _,v in ipairs(model:GetChildren()) do if v:IsA("Tool") then return v.Name end end
-    return nil
-end
-local function getTeamColor(model)
-    local plr = getPlayerESP(model)
-    if plr and plr.Team then return plr.TeamColor and plr.TeamColor.Color or plr.Team.Color end
-    return nil
-end
-local function isAlly(model)
-    local plr = getPlayerESP(model)
-    if plr and LocalPlayer then
-        if LocalPlayer.Team and plr.Team and LocalPlayer.Team==plr.Team then return true end
-    end
-    return false
-end
-
-local function createESP(model)
-    if ESP_Objects[model] then return end
-    local p = {}
-    p.Box          = newDrawing("Square"); p.Box.Thickness=1; p.Box.Filled=false
-    p.Line         = newDrawing("Line");   p.Line.Thickness=1
-    p.Stick        = newDrawing("Line");   p.Stick.Thickness=1
-    p.NameText     = newDrawing("Text");   p.NameText.Center=true;     p.NameText.Outline=true;     p.NameText.Font=2
-    p.DistanceText = newDrawing("Text");   p.DistanceText.Center=true;  p.DistanceText.Outline=true;  p.DistanceText.Font=2
-    p.HPBarBack    = newDrawing("Square"); p.HPBarBack.Filled=true;    p.HPBarBack.Color=Color3.fromRGB(0,0,0)
-    p.HPBar        = newDrawing("Square"); p.HPBar.Filled=true
-    p.HPText       = newDrawing("Text");   p.HPText.Center=true;       p.HPText.Outline=true;       p.HPText.Font=2; p.HPText.Size=13
-    p.ItemText     = newDrawing("Text");   p.ItemText.Center=true;     p.ItemText.Outline=true;     p.ItemText.Font=2; p.ItemText.Size=13
-    ESP_Objects[model] = p
-    model.AncestryChanged:Connect(function(_, parent)
-        if not parent and ESP_Objects[model] then
-            for _,obj in pairs(ESP_Objects[model]) do if obj and obj.Remove then obj:Remove() end end
-            ESP_Objects[model]=nil; Size_Cache[model]=nil; Size_Cache_Age[model]=nil
-            NPC_Identity_Cache[model]=nil
-        end
-    end)
-end
-
-local function wvp(pos)
-    local v, on = Camera:WorldToViewportPoint(pos)
-    return Vector2.new(v.X,v.Y), on, v.Z
-end
-
-local ESP_TICK     = 0
-local ESP_INTERVAL = 1/12  -- 12fps cap for ESP
-
-local function updateESP()
-    if not ESP_Config.Enabled then
-        for _,p in pairs(ESP_Objects) do setVis(p,false) end
-        return
-    end
-    local camPos = Camera.CFrame.Position
-    for model, parts in pairs(ESP_Objects) do
-        local hum  = model:FindFirstChildOfClass("Humanoid")
-        local root = model:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then setVis(parts,false); continue end
-        if ESP_Config.DeadCheck and IsDead(model) then setVis(parts,false); continue end
-        local isp = (getPlayerESP(model) ~= nil)
-        if isp and not ESP_Config.ShowPlayers then setVis(parts,false); continue end
-        if not isp and not ESP_Config.ShowNPCs then setVis(parts,false); continue end
-        local dist = (root.Position-camPos).Magnitude
-        if dist > ESP_Config.MaxDistance then setVis(parts,false); continue end
-        if ESP_Config.TeamCheck and isAlly(model) then setVis(parts,false); continue end
-        local rv, onScreen, depth = wvp(root.Position)
-        if not onScreen or depth<=0 then setVis(parts,false); continue end
-
-        local color = ESP_Config.EnemyColor
-        if isAlly(model) then color=ESP_Config.AllyColor
-        elseif ESP_Config.UseTeamColor then local tc=getTeamColor(model); if tc then color=tc end end
-
-        local size = getCachedSize(model)
-
-        if ESP_Config.ShowBox then
-            local tv,_ = wvp(root.Position+Vector3.new(0,size.Y/2,0))
-            local bv,_ = wvp(root.Position-Vector3.new(0,size.Y/2,0))
-            local h=math.abs(tv.Y-bv.Y); local w=h/2
-            parts.Box.Size=Vector2.new(w,h); parts.Box.Position=Vector2.new(rv.X-w/2,tv.Y)
-            parts.Box.Color=color; parts.Box.Visible=true
-        else parts.Box.Visible=false end
-
-        if ESP_Config.ShowLine then
-            parts.Line.From=Vector2.new(Camera.ViewportSize.X/2,Camera.ViewportSize.Y)
-            parts.Line.To=rv; parts.Line.Color=ESP_Config.LineColor; parts.Line.Visible=true
-        else parts.Line.Visible=false end
-
-        if ESP_Config.ShowStick then
-            local hp = model:FindFirstChild("Head") or root
-            local hv,hon = wvp(hp.Position); local fv,fon = wvp(root.Position-Vector3.new(0,size.Y/2,0))
-            if hon and fon then parts.Stick.From=hv; parts.Stick.To=fv; parts.Stick.Color=ESP_Config.StickColor; parts.Stick.Visible=true
-            else parts.Stick.Visible=false end
-        else parts.Stick.Visible=false end
-
-        if ESP_Config.ShowName then
-            parts.NameText.Position=rv-Vector2.new(0,30); parts.NameText.Size=ESP_Config.NameTextSize
-            parts.NameText.Color=color; parts.NameText.Text=model.Name; parts.NameText.Visible=true
-        else parts.NameText.Visible=false end
-
-        if ESP_Config.ShowDistance then
-            parts.DistanceText.Position=rv-Vector2.new(0,15); parts.DistanceText.Size=ESP_Config.DistanceTextSize
-            parts.DistanceText.Color=Color3.fromRGB(255,255,255); parts.DistanceText.Text=string.format("[%.0f m]",dist)
-            parts.DistanceText.Visible=true
-        else parts.DistanceText.Visible=false end
-
-        if ESP_Config.ShowHPBar then
-            local pct=math.clamp(hum.Health/hum.MaxHealth,0,1)
-            local bw=ESP_Config.HPBarWidth; local bh=ESP_Config.HPBarHeight
-            local bx=rv.X-bw/2; local by=rv.Y+25
-            parts.HPBarBack.Size=Vector2.new(bw,bh); parts.HPBarBack.Position=Vector2.new(bx,by); parts.HPBarBack.Visible=true
-            parts.HPBar.Size=Vector2.new(bw*pct,bh); parts.HPBar.Position=Vector2.new(bx,by)
-            parts.HPBar.Color=Color3.fromRGB(255*(1-pct),255*pct,0); parts.HPBar.Visible=true
-            parts.HPText.Position=Vector2.new(rv.X,by+bh+8)
-            parts.HPText.Text=string.format("%.0f/%.0f",hum.Health,hum.MaxHealth); parts.HPText.Visible=true
-        else parts.HPBarBack.Visible=false; parts.HPBar.Visible=false; parts.HPText.Visible=false end
-
-        if ESP_Config.ShowEquippedItem then
-            local item=getEquippedTool(model)
-            if item then parts.ItemText.Position=rv-Vector2.new(0,45); parts.ItemText.Color=Color3.fromRGB(120,255,120); parts.ItemText.Text="["..item.."]"; parts.ItemText.Visible=true
-            else parts.ItemText.Visible=false end
-        else parts.ItemText.Visible=false end
-    end
-end
-
--- Non-blocking scan: players first, then workspace in async task
-local function scanWorkspace()
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character then
-            local hum=plr.Character:FindFirstChildOfClass("Humanoid")
-            local root=plr.Character:FindFirstChild("HumanoidRootPart")
-            if hum and root then createESP(plr.Character) end
-        end
-    end
-    task.spawn(function()
-        local counter = 0
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") then
-                local hum=obj:FindFirstChildOfClass("Humanoid")
-                local root=obj:FindFirstChild("HumanoidRootPart")
-                if hum and root then
-                    if not getPlayerESP(obj) then createESP(obj) end
-                end
-                counter=counter+1
-                if counter%20==0 then task.wait() end
-            end
-        end
-    end)
-end
-
---// ==================================================
---// 12. HOOKS
+--// 11. HOOKS
 --// ==================================================
 local function applyBulletTP(origin, tp)
     if not _G.BulletTP or not tp then return origin end
@@ -791,7 +527,7 @@ if not oldIndex then
 end
 
 --// ==================================================
---// 13. LOOPS
+--// 12. LOOPS
 --// ==================================================
 task.spawn(function()
     while true do
@@ -815,41 +551,12 @@ RunService.RenderStepped:Connect(function()
     UpdateTargetInfo(); UpdateHighlight()
 end)
 
-RunService.Heartbeat:Connect(function()
-    local now=tick()
-    if now-ESP_TICK < ESP_INTERVAL then return end
-    ESP_TICK=now; updateESP()
-end)
-
-scanWorkspace()
-
-Players.PlayerAdded:Connect(function(plr)
-    plr.CharacterAdded:Connect(function(char)
-        task.wait(1)
-        local hum=char:FindFirstChildOfClass("Humanoid"); local root=char:FindFirstChild("HumanoidRootPart")
-        if hum and root then createESP(char) end
-    end)
-end)
-for _,plr in pairs(Players:GetPlayers()) do
-    plr.CharacterAdded:Connect(function(char)
-        task.wait(1)
-        local hum=char:FindFirstChildOfClass("Humanoid"); local root=char:FindFirstChild("HumanoidRootPart")
-        if hum and root then createESP(char) end
-    end)
-end
-workspace.DescendantAdded:Connect(function(obj)
-    if obj:IsA("Model") then
-        task.wait(0.2)
-        local hum=obj:FindFirstChildOfClass("Humanoid"); local root=obj:FindFirstChild("HumanoidRootPart")
-        if hum and root and not getPlayerESP(obj) then createESP(obj) end
-    end
-end)
 Players.PlayerRemoving:Connect(function(plr)
     if plr==LocalPlayer then CleanupUIOnly() end
 end)
 
 --// ==================================================
---// 14. UI (Obsidian loads in task.spawn — no blocking)
+--// 13. UI (Silent Aim + Bypass & Extra + Save)
 --// ==================================================
 task.spawn(function()
     local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -858,13 +565,12 @@ task.spawn(function()
     local SaveManager = loadstring(game:HttpGet(repo.."addons/SaveManager.lua"))()
 
     local Window = Library:CreateWindow({
-        Title="🎯 Universal Pro v4.3 — No Freeze Build",
+        Title="🎯 Universal Pro v4.3 — Aim + Bypass",
         Center=true, AutoShow=true, TabPadding=8, MenuFadeTime=0.2
     })
 
     local Tabs={
         Aim    = Window:AddTab("Silent Aim"),
-        ESP    = Window:AddTab("ESP Pro"),
         Bypass = Window:AddTab("Bypass & Extra"),
         Save   = Window:AddTab("SAVE 📁")
     }
@@ -915,7 +621,7 @@ task.spawn(function()
 
     local AimInfo = Tabs.Aim:AddRightGroupbox("Visuals & Information")
     AimInfo:AddLabel("FOV Circle Color"):AddColorPicker("FOVColor",{Default=Color3.fromRGB(0,255,0),Title="FOV Color",Callback=function(v) _G.FOVColor=v; Circle.Color=v end})
-    AimInfo:AddToggle("HLTarget", {Text="Highlight Target", Default=false, Callback=function(v) _G.HighlightTarget=v end})
+    AimInfo:AddToggle("HLTarget",     {Text="Highlight Target",  Default=false, Callback=function(v) _G.HighlightTarget=v end})
     AimInfo:AddToggle("ShowTgtInfo",  {Text="Show Target Info",  Default=false, Callback=function(v) _G.ShowTarget=v end})
     AimInfo:AddToggle("InfoName",     {Text="Show Name/Type",    Default=false, Callback=function(v) _G.ShowTargetName=v end})
     AimInfo:AddToggle("InfoHP",       {Text="Show HP",           Default=false, Callback=function(v) _G.ShowTargetHP=v end})
@@ -927,37 +633,7 @@ task.spawn(function()
     AimTeam:AddToggle("TeamChkPlr", {Text="Team Check (Players)", Default=true,  Callback=function(v) _G.TeamCheck=v end})
     AimTeam:AddToggle("TeamChkNPC", {Text="Team Check (NPCs)",    Default=false, Callback=function(v) _G.TeamCheckForNPCs=v end})
 
-    -- [ ESP TAB ]
-    local ESPMain = Tabs.ESP:AddLeftGroupbox("Main Controls")
-    ESPMain:AddToggle("ESPToggle",    {Text="Enable ESP",        Default=false, Callback=function(v) ESP_Config.Enabled=v end})
-    ESPMain:AddToggle("ESPPlrs",      {Text="Show Players",      Default=true,  Callback=function(v) ESP_Config.ShowPlayers=v end})
-    ESPMain:AddToggle("ESPNPCs",      {Text="Show NPCs",         Default=true,  Callback=function(v) ESP_Config.ShowNPCs=v end})
-    ESPMain:AddToggle("ESPTeam",      {Text="Team Check",        Default=true,  Callback=function(v) ESP_Config.TeamCheck=v end})
-    ESPMain:AddToggle("ESPTeamClr",   {Text="Use Team Color",    Default=true,  Callback=function(v) ESP_Config.UseTeamColor=v end})
-    ESPMain:AddToggle("ESPDeadChk",   {Text="Hide Dead Bodies",  Default=true,  Callback=function(v) ESP_Config.DeadCheck=v end})
-
-    local ESPElems = Tabs.ESP:AddLeftGroupbox("Visual Elements")
-    ESPElems:AddToggle("EBox",   {Text="Show Box",           Default=false, Callback=function(v) ESP_Config.ShowBox=v end})
-    ESPElems:AddToggle("ELine",  {Text="Show Line",          Default=false, Callback=function(v) ESP_Config.ShowLine=v end})
-    ESPElems:AddToggle("EStick", {Text="Show Stick",         Default=false, Callback=function(v) ESP_Config.ShowStick=v end})
-    ESPElems:AddToggle("EName",  {Text="Show Name",          Default=false, Callback=function(v) ESP_Config.ShowName=v end})
-    ESPElems:AddToggle("EDist",  {Text="Show Distance",      Default=false, Callback=function(v) ESP_Config.ShowDistance=v end})
-    ESPElems:AddToggle("EHP",    {Text="Show HP Bar",        Default=false, Callback=function(v) ESP_Config.ShowHPBar=v end})
-    ESPElems:AddToggle("EEquip", {Text="Show Equipped Item", Default=false, Callback=function(v) ESP_Config.ShowEquippedItem=v end})
-    ESPElems:AddToggle("EInv",   {Text="Show Full Inventory",Default=false, Callback=function(v) ESP_Config.ShowInventory=v end})
-
-    local ESPSizes = Tabs.ESP:AddRightGroupbox("Sizes & Distance")
-    ESPSizes:AddSlider("ESPMaxD",  {Text="Max Distance",  Default=2500,Min=500,Max=5000,Rounding=0,   Callback=function(v) ESP_Config.MaxDistance=v end})
-    ESPSizes:AddSlider("ESPNmSz", {Text="Name Size",     Default=16,  Min=8,  Max=30,  Rounding=0,Compact=true, Callback=function(v) ESP_Config.NameTextSize=v end})
-    ESPSizes:AddSlider("ESPDsSz", {Text="Distance Size", Default=14,  Min=8,  Max=30,  Rounding=0,Compact=true, Callback=function(v) ESP_Config.DistanceTextSize=v end})
-
-    local ESPColors = Tabs.ESP:AddRightGroupbox("ESP Colors")
-    ESPColors:AddLabel("Enemy Color"):AddColorPicker("CEnemy",{Default=Color3.fromRGB(255,80,80), Title="Enemy",Callback=function(v) ESP_Config.EnemyColor=v end})
-    ESPColors:AddLabel("Ally Color"): AddColorPicker("CAlly", {Default=Color3.fromRGB(80,255,80), Title="Ally",  Callback=function(v) ESP_Config.AllyColor=v  end})
-    ESPColors:AddLabel("Line Color"): AddColorPicker("CLine", {Default=Color3.fromRGB(255,255,0), Title="Line",  Callback=function(v) ESP_Config.LineColor=v  end})
-    ESPColors:AddLabel("Stick Color"):AddColorPicker("CStick",{Default=Color3.fromRGB(255,255,255),Title="Stick",Callback=function(v) ESP_Config.StickColor=v end})
-
-    -- [ BYPASS TAB ]
+    -- [ BYPASS & EXTRA TAB ]
     local BypassBox = Tabs.Bypass:AddLeftGroupbox("Anti-Cheat Bypass")
     BypassBox:AddToggle("AdonisToggle",{Text="Adonis Anti-Cheat Bypass",Default=true,Callback=function(v)
         _G.AdonisBypass=v; Library:Notify(v and "🛡️ Adonis Bypass ENABLED" or "🛡️ Adonis Bypass DISABLED",2)
@@ -982,7 +658,7 @@ task.spawn(function()
     end
 
     -- [ SAVE TAB ]
-    Library:SetWatermark("Universal Pro v4.3 — No Freeze")
+    Library:SetWatermark("Universal Pro v4.3 — Aim + Bypass")
     ThemeManager:SetLibrary(Library); SaveManager:SetLibrary(Library)
     SaveManager:IgnoreThemeSettings(); SaveManager:SetIgnoreIndexes({"MenuKeybind"})
     ThemeManager:SetFolder("UniversalPro"); SaveManager:SetFolder("UniversalPro/main")
@@ -992,6 +668,5 @@ task.spawn(function()
     Tabs.Save:AddButton("🔄 Reset Settings", function() SaveManager:Reset(); Library:Notify("🔄 Settings reset!",2)  end)
     Tabs.Save:AddButton("🎨 Reload Themes",  function() ThemeManager:Load(); Library:Notify("🎨 Themes reloaded!",2) end)
 
-    Library:Notify("✅ Universal Pro v4.3 — No Freeze Build loaded!", 5)
-    print("[UniversalPro v4.3 No-Freeze] Loaded. NPC identity cached. ESP at 12fps. Scan yields/20. UpdateCaches yields/5. UI async.")
-end)  -- end task.spawn for UI
+    Library:Notify("✅ Universal Pro v4.3 — Aim + Bypass loaded!", 5)
+end)
